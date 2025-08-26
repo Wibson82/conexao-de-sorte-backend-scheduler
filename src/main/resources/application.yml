@@ -8,7 +8,7 @@ spring:
   r2dbc:
     url: r2dbc:mysql://localhost:3306/conexao_sorte_auth
     username: ${DB_USERNAME:conexao_sorte}
-    password: ${DB_PASSWORD:senha123}
+    password: ${DB_PASSWORD:}  # Removed default password for security
     pool:
       enabled: true
       initial-size: 5
@@ -21,7 +21,7 @@ spring:
     enabled: true
     url: jdbc:mysql://localhost:3306/conexao_sorte_auth
     user: ${DB_USERNAME:conexao_sorte}
-    password: ${DB_PASSWORD:senha123}
+    password: ${DB_PASSWORD:}  # Removed default password for security
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: false
@@ -40,18 +40,27 @@ spring:
           max-idle: 8
           min-idle: 2
           
-  # Azure Key Vault
+  # Azure Key Vault with configtree pattern
   cloud:
     azure:
       keyvault:
         secret:
           enabled: true
           endpoint: ${AZURE_KEYVAULT_URI:}
+          case-sensitive: false
+          secret-keys: conexao-de-sorte-jwt-signing-key,conexao-de-sorte-jwt-verification-key,conexao-de-sorte-jwt-key-id,conexao-de-sorte-jwt-secret
       credentials:
         client-id: ${AZURE_CLIENT_ID:}
         client-secret: ${AZURE_CLIENT_SECRET:}
       profile:
         tenant-id: ${AZURE_TENANT_ID:}
+  
+  # Configtree secret management
+  config:
+    import:
+      - optional:configtree:/etc/secrets/azure/
+      - optional:configtree:/mnt/secrets/
+      - optional:file:./secrets.properties
 
 server:
   port: ${SERVER_PORT:8081}
@@ -114,24 +123,31 @@ management:
     sampling:
       probability: ${TRACING_PROBABILITY:0.1}
 
-# JWT Configuration
+# JWT Configuration with secure secret management
 jwt:
-  # Duração dos tokens (em segundos)
-  access-token-validity: 3600  # 1 hora
-  refresh-token-validity: 604800  # 7 dias
+  # Duracao dos tokens (em segundos)
+  access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:3600}  # 1 hora
+  refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:604800}  # 7 dias
   
-  # Azure Key Vault keys
+  # Azure Key Vault keys - using secure naming
   key-vault:
-    private-key-name: ${JWT_PRIVATE_KEY_NAME:jwt-private-key}
-    public-key-name: ${JWT_PUBLIC_KEY_NAME:jwt-public-key}
-    key-id-name: ${JWT_KEY_ID_NAME:jwt-key-id}
+    private-key-name: ${JWT_PRIVATE_KEY_NAME:conexao-de-sorte-jwt-signing-key}
+    public-key-name: ${JWT_PUBLIC_KEY_NAME:conexao-de-sorte-jwt-verification-key}
+    key-id-name: ${JWT_KEY_ID_NAME:conexao-de-sorte-jwt-key-id}
+    secret-name: ${JWT_SECRET_NAME:conexao-de-sorte-jwt-secret}
     
   # Issuer e Audience
   issuer: ${JWT_ISSUER:https://auth.conexaodesorte.com}
   audience: ${JWT_AUDIENCE:conexao-de-sorte}
   
   # JWKS cache
-  jwks-cache-duration: 3600  # 1 hora
+  jwks-cache-duration: ${JWT_JWKS_CACHE_DURATION:3600}  # 1 hora
+  
+  # Security settings
+  algorithm: ${JWT_ALGORITHM:RS256}
+  rotation:
+    enabled: ${JWT_ROTATION_ENABLED:true}
+    schedule: ${JWT_ROTATION_SCHEDULE:0 2 * * *}  # Daily at 2 AM
 
 # CORS Configuration
 cors:
