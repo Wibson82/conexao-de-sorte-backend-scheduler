@@ -1,0 +1,248 @@
+# ============================================================================
+# DOCKER COMPOSE - MICROSERVIÇO AUTENTICAÇÃO
+# ============================================================================
+# Ambiente completo para desenvolvimento e testes
+# Inclui: MySQL, Redis, aplicação, observabilidade
+# ============================================================================
+
+services:
+  # ========================================
+  # MySQL Database
+  # ========================================
+  mysql:
+    image: mysql:8.0
+    container_name: auth-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: conexao_sorte_auth
+      MYSQL_USER: conexao_sorte
+      MYSQL_PASSWORD: senha123
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/mysql-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "conexao_sorte", "-psenha123"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=256M
+      --max-connections=100
+
+  # ========================================
+  # Redis Cache
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: auth-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+  # ========================================
+  # Microserviço Autenticação
+  # ========================================
+  autenticacao:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      # Spring Profiles
+      SPRING_PROFILES_ACTIVE: dev
+      
+      # Database
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: conexao_sorte_auth
+      DB_USERNAME: conexao_sorte
+      DB_PASSWORD: senha123
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # JWT Configuration
+      JWT_ISSUER: https://auth.conexaodesorte.local
+      JWT_AUDIENCE: conexao-de-sorte-dev
+      
+      # CORS
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,https://app.conexaodesorte.local
+      
+      # Feature Flags
+      FEATURE_AUTH_MS: true
+      FEATURE_JWKS_ROTATION: true
+      FEATURE_AUDIT_LOGGING: true
+      
+      # Logging
+      LOG_LEVEL: INFO
+      SECURITY_LOG_LEVEL: DEBUG
+      
+      # JVM Options
+      JAVA_OPTS: >
+        -Xms256m 
+        -Xmx512m 
+        -XX:+UseG1GC 
+        -XX:+UseContainerSupport
+        -Dspring.profiles.active=dev
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - auth-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # ========================================
+  # Prometheus (Métricas)
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: auth-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - auth-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # ========================================
+  # Grafana (Dashboards)
+  # ========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: auth-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - auth-network
+    depends_on:
+      - prometheus
+
+  # ========================================
+  # Jaeger (Tracing)
+  # ========================================
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: auth-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    ports:
+      - "14268:14268"  # jaeger-collector HTTP
+      - "16686:16686"  # jaeger-ui
+    networks:
+      - auth-network
+
+# ========================================
+# Networks
+# ========================================
+networks:
+  auth-network:
+    driver: bridge
+    name: auth-network
+
+# ========================================
+# Volumes
+# ========================================
+volumes:
+  mysql_data:
+    driver: local
+    name: auth_mysql_data
+  redis_data:
+    driver: local  
+    name: auth_redis_data
+  prometheus_data:
+    driver: local
+    name: auth_prometheus_data
+  grafana_data:
+    driver: local
+    name: auth_grafana_data
+
+# ============================================================================
+# COMANDOS ÚTEIS:
+# ============================================================================
+# 
+# Iniciar ambiente completo:
+#   docker-compose up -d
+#
+# Logs da aplicação:
+#   docker-compose logs -f autenticacao
+#
+# Rebuild da aplicação:
+#   docker-compose up -d --build autenticacao
+#
+# Parar ambiente:
+#   docker-compose down
+#
+# Limpar volumes (CUIDADO - perde dados):
+#   docker-compose down -v
+#
+# URLs dos serviços:
+#   - Aplicação: http://localhost:8081
+#   - Health Check: http://localhost:8081/actuator/health
+#   - Swagger UI: http://localhost:8081/swagger-ui.html
+#   - JWKS: http://localhost:8081/.well-known/jwks.json
+#   - Prometheus: http://localhost:9090
+#   - Grafana: http://localhost:3001 (admin/admin123)
+#   - Jaeger: http://localhost:16686
+#
+# ============================================================================

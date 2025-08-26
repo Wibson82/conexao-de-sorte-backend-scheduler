@@ -1,0 +1,182 @@
+# =============================================================================
+# CONFIGURAÇÃO AZURE KEY VAULT - AUTENTICAÇÃO MICROSERVICE
+# =============================================================================
+# Microserviço responsável pela autenticação e geração de tokens JWT
+# Segredos necessários: JWT (GERAÇÃO E VALIDAÇÃO), Database, OAuth2, Criptografia
+# =============================================================================
+
+spring:
+  config:
+    activate:
+      on-profile: azure
+    import:
+      - "optional:configtree:/run/secrets/"
+
+  # ===== SPRING CLOUD AZURE - DISABLED FOR CONFIGTREE =====
+  cloud:
+    azure:
+      keyvault:
+        secret:
+          enabled: false  # Usando configtree para maior segurança
+
+  # ===== DATABASE CONFIGURATION =====
+  datasource:
+    url: ${DB_URL:jdbc:mysql://conexao-mysql:3306/conexao_de_sorte?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Sao_Paulo}
+    username: ${DB_USER:auth_user}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  # ===== JPA CONFIGURATION =====
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+    show-sql: false
+
+  # ===== OAUTH2 CONFIGURATION =====
+  security:
+    oauth2:
+      client:
+        registration:
+          azure:
+            client-id: ${OAUTH2_CLIENT_ID:}
+            client-secret: ${OAUTH2_CLIENT_SECRET:}
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+        provider:
+          azure:
+            issuer-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID:}/v2.0
+            jwk-set-uri: https://login.microsoftonline.com/${AZURE_TENANT_ID:}/discovery/v2.0/keys
+
+# ===== MICROSERVICE SPECIFIC CONFIG =====
+app:
+  microservice:
+    name: autenticacao
+    version: @project.version@
+    description: "Microserviço de autenticação e autorização"
+  
+  # JWT Configuration - GERAÇÃO E VALIDAÇÃO COMPLETA
+  jwt:
+    # Chaves para geração e assinatura de tokens (via configtree)
+    signing-key: ${JWT_SIGNING_KEY:}
+    verification-key: ${JWT_VERIFICATION_KEY:}
+    key-id: ${JWT_KEY_ID:}
+    secret: ${JWT_SECRET:}
+    
+    # Configurações de token
+    issuer: https://conexaodesorte.com.br
+    audience: conexao-de-sorte-frontend-app
+    algorithm: RS256
+    expiration: 86400  # 24 horas
+    refresh-expiration: 604800  # 7 dias
+    
+    # Configurações de segurança
+    validation:
+      enabled: true
+      strict-mode: true
+      require-expiration: true
+      clock-skew: PT30S
+    
+    # Configurações de rotação (apenas para microserviço auth)
+    rotation:
+      enabled: true
+      interval-hours: 24
+      backup-versions: 5
+      transition-period: PT2H
+
+  # Criptografia - Chave mestre
+  encryption:
+    master-key: ${ENCRYPTION_MASTER_KEY:}
+    algorithm: AES-256-GCM
+    key-derivation: PBKDF2WithHmacSHA256
+    iterations: 100000
+
+  # OAuth2 Configuration
+  oauth2:
+    client-id: ${OAUTH2_CLIENT_ID:}
+    client-secret: ${OAUTH2_CLIENT_SECRET:}
+    redirect-uri: https://conexaodesorte.com.br/oauth2/callback
+    scopes: openid,profile,email
+    
+  # Security Configuration
+  security:
+    session:
+      timeout: PT30M
+      max-concurrent-sessions: 3
+    password:
+      min-length: 8
+      require-special-chars: true
+      require-numbers: true
+      require-uppercase: true
+    rate-limiting:
+      login-attempts: 5
+      lockout-duration: PT15M
+
+# ===== LOGGING =====
+logging:
+  level:
+    '[com.azure]': INFO
+    '[com.azure.security.keyvault]': INFO
+    '[org.springframework.cloud.azure]': INFO
+    '[br.tec.facilitaservicos.autenticacao]': DEBUG
+    '[org.springframework.security]': DEBUG
+
+# ===== MANAGEMENT ENDPOINTS - HARDENED =====
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      exclude: env,configprops,beans,conditions,mappings,threaddump,heapdump,startup
+  endpoint:
+    health:
+      show-details: when_authorized
+      roles: ADMIN
+    info:
+      enabled: true
+    env:
+      enabled: false
+    configprops:
+      enabled: false
+    beans:
+      enabled: false
+    conditions:
+      enabled: false
+    mappings:
+      enabled: false
+    threaddump:
+      enabled: false
+    heapdump:
+      enabled: false
+    startup:
+      enabled: false
+  health:
+    db:
+      enabled: true
+
+# ===== SECURITY AUDIT LOGGING =====
+security:
+  audit:
+    enabled: true
+    include-request-details: true
+    include-client-info: true
+    log-authentication-success: true
+    log-authentication-failure: true
+    log-authorization-failure: true
+
+# ===== SERVER CONFIGURATION =====
+server:
+  port: ${SERVER_PORT:8081}
+  servlet:
+    context-path: /api/v1/auth
+  compression:
+    enabled: true
+  http2:
+    enabled: true
