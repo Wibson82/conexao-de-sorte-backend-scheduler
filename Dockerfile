@@ -77,26 +77,8 @@ WORKDIR /app
 # Copiar JAR da aplicação do estágio de build
 COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 
-# Configurar JVM otimizada para containers e segurança
-ENV JAVA_OPTS="\
-    -server \
-    -XX:+UseContainerSupport \
-    -XX:+UnlockExperimentalVMOptions \
-    -XX:+UseZGC \
-    -XX:+UnlockDiagnosticVMOptions \
-    -XX:+UseTransparentHugePages \
-    -XX:+OptimizeStringConcat \
-    -XX:+UseStringDeduplication \
-    -Xms256m \
-    -Xmx512m \
-    -XX:MaxRAMPercentage=70.0 \
-    -XX:+HeapDumpOnOutOfMemoryError \
-    -XX:HeapDumpPath=/tmp/heapdump.hprof \
-    -Djava.security.egd=file:/dev/./urandom \
-    -Djava.awt.headless=true \
-    -Dfile.encoding=UTF-8 \
-    -Duser.timezone=America/Sao_Paulo \
-    -Dspring.security.filter.dispatcher-types=ASYNC,REQUEST,FORWARD,INCLUDE,ERROR"
+## JVM otimizada para containers: flags removidas para compatibilidade total com Java 24
+# As flags e perfis devem ser definidos externamente via workflow/deploy
 
 # Variáveis de ambiente da aplicação
 ENV SPRING_PROFILES_ACTIVE=prod

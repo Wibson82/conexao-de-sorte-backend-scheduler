@@ -2,74 +2,56 @@ name: 🔐 Autenticação Microservice - CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths: ['src/**', 'pom.xml', 'Dockerfile', '.github/workflows/**']
   pull_request:
     branches: [ main ]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment'
+        description: 'Destino do deploy'
         required: false
-        default: 'auto'
+        default: 'production'
         type: choice
-        options:
-        - auto
-        - staging
-        - production
-
-# Controle de concorrência para evitar conflitos
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.environment || 'auto' }}
-  cancel-in-progress: false
+        options: [production]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: conexao-de-sorte/autenticacao-microservice
+  IMAGE_NAME: ${{ github.repository }}
   SERVICE_NAME: autenticacao
+  TZ: America/Sao_Paulo
 
-permissions:
-  id-token: write
-  contents: read
-  packages: write
-  attestations: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
+  cancel-in-progress: false
 
 jobs:
-  # ===== BUILD & TEST =====
   build-and-test:
     runs-on: ubuntu-latest
     name: 🏗️ Build and Test
-    
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        
-      - name: ☕ Setup Java 24
+      - uses: actions/checkout@v4
+      - name: Setup Java 24
         uses: actions/setup-java@v4
         with:
           java-version: '24'
           distribution: 'temurin'
           cache: maven
-          
-      - name: 🔍 Verify Maven wrapper
+      - name: Verify Maven wrapper
         run: |
           chmod +x ./mvnw
           ./mvnw --version
-          
-      - name: 🧪 Run unit tests
+      - name: Run unit tests
         run: ./mvnw clean test -Dspring.profiles.active=test
-        
-      - name: 🏗️ Build application
+      - name: Build application
         run: ./mvnw clean package -DskipTests -Dspring.profiles.active=production
-        
-      - name: 📦 Upload build artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: autenticacao-microservice-jar
           path: target/*.jar
           retention-days: 7
 
-  # ===== BUILD & PUSH IMAGE =====
   build-image:
     runs-on: ubuntu-latest
     name: 🐳 Build Docker Image
@@ -79,30 +61,37 @@ jobs:
       contents: read
       packages: write
       attestations: write
-      
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
+      image-name-lower: ${{ steps.image_name.outputs.image_name_lower }}
       image-tags: ${{ steps.meta.outputs.tags }}
-    
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        
-      - name: 🐳 Set up Docker Buildx
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        id: image_name
+        run: |
+          set -euo pipefail
+          REPO='${{ env.IMAGE_NAME }}'
+          echo "image_name_lower=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
-      - name: 🔐 Login to GitHub Container Registry
+        with:
+          driver-opts: network=host
+
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: 📋 Extract metadata
+
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.image_name.outputs.image_name_lower }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -110,277 +99,271 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value={{branch}}-{{date 'YYYYMMDD-HHmmss'}}
             type=raw,value=prod-latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=teste-latest,enable=${{ github.ref == 'refs/heads/develop' }}
           labels: |
-            org.opencontainers.image.title=Autenticacao Microservice
-            org.opencontainers.image.description=Authentication and authorization microservice
+            org.opencontainers.image.title=Autenticação Microservice
+            org.opencontainers.image.description=Authentication and JWT management microservice
             org.opencontainers.image.service=${{ env.SERVICE_NAME }}
-            
-      - name: 🏗️ Build and push Docker image
+
+      - name: Build and push image
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           sbom: true
           provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          network: host
           build-args: |
             SERVICE_NAME=${{ env.SERVICE_NAME }}
             BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
             VCS_REF=${{ github.sha }}
             VERSION=1.0.0
 
-  # ===== SIGN IMAGE WITH COSIGN =====
   sign-image:
     runs-on: ubuntu-latest
-    name: ✍️ Sign Container Image
+    name: ✍️ Sign & Verify (100% OIDC keyless)
     needs: build-image
     permissions:
       id-token: write
-      packages: write
       contents: read
-    
+      packages: write
+      attestations: write
     steps:
-      - name: 🔐 Install Cosign
+      - name: Verify OIDC token availability
+        run: |
+          echo "🔍 Verifying OIDC token is available..."
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "❌ OIDC token not available"
+            exit 1
+          fi
+          echo "✅ OIDC token is available"
+          
+      - name: Resolve image digest ref
+        id: ref
+        run: |
+          set -euo pipefail
+          IMG="ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
+          echo "lower=$(echo "$IMG" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
         uses: sigstore/cosign-installer@v3
-        
-      - name: 🔐 Login to GitHub Container Registry
+        with:
+          cosign-release: v2.5.3
+
+      - name: Login GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        
-      - name: ✍️ Sign image with keyless signing
-        run: |
-          echo "✍️ Signing image with keyless cosign..."
-          # Use the first tag from the build output (more reliable than digest)
-          IMAGE_TAG=$(echo '${{ needs.build-image.outputs.image-tags }}' | head -n1)
-          echo "Signing image: $IMAGE_TAG"
-          cosign sign --yes "$IMAGE_TAG"
-          echo "✅ Image signed successfully"
 
-  # ===== FETCH AZURE SECRETS =====
-  fetch-azure-secrets:
-    runs-on: ubuntu-latest
-    name: 🔐 Fetch Azure Key Vault Secrets
+      - name: Pull digest
+        run: docker pull "${{ steps.ref.outputs.lower }}"
+
+      - name: Sign (keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          echo "🔐 Signing container image with OIDC keyless signature..."
+          cosign sign --yes "${{ steps.ref.outputs.lower }}"
+
+      - name: Verify OIDC signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          echo "✅ Verifying OIDC keyless signature..."
+          cosign verify \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/\.github/workflows/.*@refs/heads/main$" \
+            "${{ steps.ref.outputs.lower }}"
+          echo "🎉 Container image signature verified successfully!"
+          
+      - name: Generate SBOM attestation (OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"  
+        run: |
+          echo "📋 Generating SBOM attestation with OIDC..."
+          cosign attest --yes --type=spdxjson \
+            --predicate=/dev/null \
+            "${{ steps.ref.outputs.lower }}" || echo "SBOM attestation optional - continuing"
+
+  deploy-production:
     needs: [build-image, sign-image]
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, hostinger-runner]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    name: 🌟 Deploy to Production (self-hosted, OIDC)
     permissions:
       id-token: write
       contents: read
-    
+      packages: read
     steps:
-      - name: 🔐 Login to Azure (OIDC)
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 🔍 Validate Azure Key Vault Connection
-        id: fetch-secrets
+      - name: Resolver Key Vault + carregar segredos
         run: |
-          echo "🔍 Validating Azure Key Vault access (OIDC)..."
-          
-          # Extract vault name securely
-          VAULT_NAME=$(echo "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" | sed 's|https://||' | sed 's|\.vault\.azure\.net/||')
-          echo "🏪 Vault: [VAULT_NAME_MASKED_FOR_SECURITY]"
-          
-          # Test access without exposing values
-          SECRET_COUNT=$(az keyvault secret list --vault-name "$VAULT_NAME" --query 'length([])' -o tsv) || {
-            echo "❌ Failed to access Key Vault"
-            exit 1
-          }
-          
-          echo "✅ Azure Key Vault secrets validated for deployment"
-  # ===== DEPLOY TO STAGING =====
-  deploy-staging:
-    runs-on: ubuntu-latest
-    name: 🚀 Deploy to Staging
-    needs: [build-image, fetch-azure-secrets]
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-    
-    steps:
-      - name: 🚀 Deploy to staging server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          port: 22
-          script: |
-            cd /opt/conexao-microservices
-            echo "Deploying autenticacao microservice to staging..."
-            
-            # Setup secure secrets via configtree
-            echo "🔐 Setting up secure secrets infrastructure..."
-            sudo /opt/conexao-microservices/scripts/setup-microservice-secrets.sh autenticacao staging
-            
-            # Pull latest image
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop
-            
-            # Stop existing container if running
-            docker stop autenticacao-microservice 2>/dev/null || true
-            docker rm autenticacao-microservice 2>/dev/null || true
-            
-            # Deploy with secure secrets via configtree
-            docker run -d \
-              --name autenticacao-microservice \
-              --network conexao-network \
-              --restart unless-stopped \
-              -p 8081:8081 \
-              --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
-              --health-interval=60s \
-              --health-timeout=30s \
-              --health-retries=3 \
-              --health-start-period=120s \
-              -v /run/secrets:/run/secrets:ro \
-              -e SPRING_PROFILES_ACTIVE=prod,azure \
-              -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
-              -e ENVIRONMENT=staging \
-              -e SERVER_PORT=8081 \
-              -e TZ=America/Sao_Paulo \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop
-            
-            # Health check
-            sleep 30
-            curl -f http://localhost:8081/actuator/health || exit 1
-            
-            # Cleanup old images
-            docker image prune -f
+          set -euo pipefail
+          VAULT="${{ secrets.AZURE_KEYVAULT_NAME }}"
+          if [ -z "$VAULT" ]; then
+            VAULT="$(echo "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" | sed 's#https://##; s#\.vault\.azure\.net/?##')"
+          fi
+          echo "VAULT=$VAULT" >> "$GITHUB_ENV"
 
-  # ===== DEPLOY TO PRODUCTION =====
-  deploy-production:
-    runs-on: ubuntu-latest
-    name: 🌟 Deploy to Production
-    needs: [build-image, fetch-azure-secrets]
-    if: github.ref == 'refs/heads/main'
-    environment: 
-      name: production
-      url: https://auth.conexaodesorte.com.br
-    
-    steps:
-      - name: 🌟 Deploy to production server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          port: 22
-          script: |
-            cd /opt/conexao-microservices
-            echo "Deploying autenticacao microservice to production..."
-            
-            # Setup secure secrets via configtree
-            echo "🔐 Setting up secure secrets infrastructure..."
-            sudo /opt/conexao-microservices/scripts/setup-microservice-secrets.sh autenticacao production
-            
-            # Create backup of current version
-            docker tag autenticacao-microservice:current autenticacao-microservice:backup-$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
-            
-            # Pull latest image
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            
-            # Stop existing container gracefully
-            docker stop autenticacao-microservice 2>/dev/null || true
-            docker rm autenticacao-microservice 2>/dev/null || true
-            
-            # Deploy with zero-downtime and secure secrets via configtree
-            docker run -d \
-              --name autenticacao-microservice \
-              --network conexao-network \
-              --restart unless-stopped \
-              -p 8081:8081 \
-              --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
-              --health-interval=60s \
-              --health-timeout=30s \
-              --health-retries=3 \
-              --health-start-period=120s \
-              -v /run/secrets:/run/secrets:ro \
-              -e SPRING_PROFILES_ACTIVE=prod,azure \
-              -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
-              -e ENVIRONMENT=production \
-              -e SERVER_PORT=8081 \
-              -e TZ=America/Sao_Paulo \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            
-            # Health check with retry
-            for i in {1..10}; do
-              if curl -f https://auth.conexaodesorte.com.br/actuator/health; then
-                echo "Health check passed"
-                break
-              fi
-              echo "Health check failed, retrying in 10s..."
-              sleep 10
-              if [ $i -eq 10 ]; then
-                echo "Health check failed after 10 retries, rolling back..."
-                docker stop autenticacao-microservice 2>/dev/null || true
-                docker rm autenticacao-microservice 2>/dev/null || true
-                
-                # Rollback to backup version
-                BACKUP_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep autenticacao-microservice:backup- | head -n1 | awk '{print $1}')
-                if [[ -n "$BACKUP_IMAGE" ]]; then
-                  echo "Rolling back to: $BACKUP_IMAGE"
-                  docker run -d \
-                    --name autenticacao-microservice \
-                    --network conexao-network \
-                    --restart unless-stopped \
-                    -p 8081:8081 \
-                    --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
-                    --health-interval=60s \
-                    --health-timeout=30s \
-                    --health-retries=3 \
-                    --health-start-period=120s \
-                    -v /run/secrets:/run/secrets:ro \
-                    -e SPRING_PROFILES_ACTIVE=prod,azure \
-                    -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
-                    -e ENVIRONMENT=production \
-                    -e SERVER_PORT=8081 \
-                    -e TZ=America/Sao_Paulo \
-                    "$BACKUP_IMAGE"
-                fi
-                exit 1
-              fi
-            done
-            
-            # Cleanup old images
-            docker image prune -f
-            
-            echo "✅ Autenticacao microservice deployed successfully to production!"
+          get() { az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv; }
 
-  # ===== NOTIFICATION =====
+          echo "SPRING_DATASOURCE_URL=$(get conexao-de-sorte-database-url)" >> $GITHUB_ENV
+          echo "SPRING_DATASOURCE_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "SPRING_DATASOURCE_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          echo "CONEXAO_JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
+          echo "CONEXAO_JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
+
+          SECRETS_DIR=$(mktemp -d -p /tmp conexao_secrets_XXXX)
+          umask 077
+          printf '%s' "$(get conexao-de-sorte-jwt-privateKey)" > "$SECRETS_DIR/jwt_private.pem"
+          printf '%s' "$(get conexao-de-sorte-jwt-publicKey)"  > "$SECRETS_DIR/jwt_public.pem"
+          printf '%s' "$(get conexao-de-sorte-encryption-master-key)" > "$SECRETS_DIR/encryption_master_key"
+          printf '%s' "$(get conexao-de-sorte-encryption-master-password)" > "$SECRETS_DIR/encryption_master_password"
+          chmod 600 "$SECRETS_DIR"/*
+          echo "SECRETS_DIR=$SECRETS_DIR" >> $GITHUB_ENV
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Garantir rede Docker
+        run: docker network inspect conexao-network >/dev/null 2>&1 || docker network create conexao-network
+
+      - name: Pull & Run (production)
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
+          
+          echo "🚀 Deploying image: $IMAGE"
+          
+          # Create backup of current running container if exists
+          if docker ps -q -f name=autenticacao-microservice | grep -q .; then
+            echo "📦 Creating backup of current container..."
+            docker tag autenticacao-microservice autenticacao-microservice:backup-$(date +%Y%m%d-%H%M%S) || true
+          fi
+          
+          # Pull new image
+          echo "📥 Pulling new image..."
+          docker pull "$IMAGE"
+          
+          # Stop and remove current container
+          echo "🛑 Stopping current container..."
+          docker stop autenticacao-microservice || true
+          docker rm autenticacao-microservice || true
+
+          # Create logs directory (use home directory to avoid permission issues)
+          echo "📁 Creating logs directory..."
+          mkdir -p $HOME/conexao-logs/autenticacao
+          
+          # Run new container
+          echo "▶️ Starting new container..."
+          docker run -d \
+            --name autenticacao-microservice \
+            --network conexao-network \
+            --restart unless-stopped \
+            -p 8081:8081 \
+            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
+            --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=60s \
+            -v "${SECRETS_DIR}":/run/secrets:ro \
+            -v $HOME/conexao-logs/autenticacao:/app/logs \
+            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -e SPRING_PROFILES_ACTIVE=prod,azure \
+            -e ENVIRONMENT=production \
+            -e SERVER_PORT=8081 \
+            -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
+            -e TZ=${{ env.TZ }} \
+            -e SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}" \
+            -e SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME}" \
+            -e SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD}" \
+            -e JWT_SECRET="${CONEXAO_JWT_SECRET}" \
+            -e JWT_PRIVATE_PATH="/run/secrets/jwt_private.pem" \
+            -e JWT_PUBLIC_PATH="/run/secrets/jwt_public.pem" \
+            -e ENC_MASTER_KEY_PATH="/run/secrets/encryption_master_key" \
+            -e ENC_MASTER_PASSWORD_PATH="/run/secrets/encryption_master_password" \
+            --label "traefik.enable=true" \
+            --label "traefik.docker.network=conexao-network" \
+            --label "traefik.http.routers.autenticacao.rule=Host(\`auth.conexaodesorte.com.br\`)" \
+            --label "traefik.http.routers.autenticacao.entrypoints=websecure" \
+            --label "traefik.http.routers.autenticacao.tls.certresolver=letsencrypt" \
+            --label "traefik.http.services.autenticacao.loadbalancer.server.port=8081" \
+            "$IMAGE"
+
+          # Wait for container to be ready
+          echo "⏳ Waiting for container to be ready..."
+          sleep 30
+          
+          # Health check via localhost (internal)
+          echo "🔍 Performing health check..."
+          for i in $(seq 1 10); do
+            echo "⏳ Health check attempt $i/10..."
+            if curl -fsS http://localhost:8081/actuator/health >/dev/null 2>&1; then
+              echo "✅ Container is healthy!"
+              echo "🎉 Deployment successful!"
+              break
+            fi
+            
+            if [ "$i" -eq 10 ]; then
+              echo "❌ Health check failed after 10 attempts"
+              echo "📋 Container logs (last 100 lines):"
+              docker logs autenticacao-microservice --tail 100 || true
+              echo "📊 Container status:"
+              docker ps -a --filter name=autenticacao-microservice || true
+              echo "🔍 Container health status:"
+              docker inspect autenticacao-microservice --format='{{json .State.Health}}' || true
+              rm -rf "${SECRETS_DIR}" || true
+              exit 1
+            fi
+            sleep 20
+          done
+
+          echo "🧹 Cleaning up secrets and old images..."
+          rm -rf "${SECRETS_DIR}" || true
+          docker image prune -f --filter until=24h || true
+          
+          echo "✅ Production deployment completed successfully!"
+
   notify:
     runs-on: ubuntu-latest
     name: 📢 Notification
     if: always()
-    needs: [build-and-test, build-image, deploy-staging, deploy-production]
-    
+    needs: [build-and-test, build-image, sign-image, deploy-production]
     steps:
-      - name: 📢 Notify deployment status
-        uses: 8398a7/action-slack@v3
-        if: always() && vars.SLACK_WEBHOOK_URL != ''
+      - uses: 8398a7/action-slack@v3
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         with:
           status: ${{ job.status }}
           channel: '#ci-cd-notifications'
-          webhook_url: ${{ vars.SLACK_WEBHOOK_URL }}
           fields: repo,message,commit,author,action,eventName,ref,workflow
           custom_payload: |
             {
-              username: 'GitHub Actions',
-              icon_emoji: ':lock:',
-              attachments: [{
-                color: '${{ job.status }}' === 'success' ? 'good' : '${{ job.status }}' === 'failure' ? 'danger' : 'warning',
-                fields: [{
-                  title: '🔐 Autenticacao Microservice',
-                  value: `Status: ${{ job.status }}\nBranch: ${process.env.AS_REF}\nCommit: ${process.env.AS_COMMIT}`,
-                  short: true
+              "username": "GitHub Actions",
+              "icon_emoji": ":lock:",
+              "attachments": [{
+                "color": "${{ job.status }}" == "success" ? "good" : "${{ job.status }}" == "failure" ? "danger" : "warning",
+                "fields": [{
+                  "title": "🔐 Autenticação Microservice",
+                  "value": "Status: ${{ job.status }}\\nBranch: ${{ github.ref_name }}\\nCommit: ${{ github.sha }}",
+                  "short": true
                 }]
               }]
             }

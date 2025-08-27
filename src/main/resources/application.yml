@@ -3,7 +3,11 @@ spring:
     name: autenticacao
     
   profiles:
-    active: dev
+    default: prod
+    # Profiles são sobrescritos via SPRING_PROFILES_ACTIVE no deployment
+  
+  main:
+    allow-bean-definition-overriding: true
     
   r2dbc:
     url: r2dbc:mysql://localhost:3306/conexao_sorte_auth
@@ -24,7 +28,7 @@ spring:
     password: ${DB_PASSWORD:}  # Removed default password for security
     locations: classpath:db/migration
     baseline-on-migrate: true
-    validate-on-migrate: false
+    validate-migration: false
     
   # Cache reativo (Redis)
   data:
@@ -36,7 +40,7 @@ spring:
       lettuce:
         pool:
           enabled: true
-          max-active: 20
+          max-total: 20
           max-idle: 8
           min-idle: 2
           
@@ -313,7 +317,7 @@ spring:
 server:
   port: 8081
   ssl:
-    enabled: true
+    enabled: ${SSL_ENABLED:false}
     
 management:
   endpoints:
