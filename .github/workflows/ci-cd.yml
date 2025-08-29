@@ -191,100 +191,15 @@ jobs:
 
   deploy-production:
     needs: [build-image, sign-image]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hostinger-runner]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (SSH remoto)
+    name: 🌟 Deploy to Production (self-hosted)
     permissions:
       id-token: write
       contents: read
       packages: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Configurar SSH para deploy remoto
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-          echo "✅ SSH configurado"
-
-      - name: Deploy remoto no servidor Hostinger
-        env:
-          IMAGE_REF: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}
-        run: |
-          set -euo pipefail
-          echo "🚀 Iniciando deploy remoto com imagem: $IMAGE_REF"
-          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} << 'REMOTE'
-          set -euo pipefail
-          IMAGE_REF='${{ env.IMAGE_REF }}'
-          CONTAINER_NAME='autenticacao-microservice'
-          LOG_DIR="$HOME/conexao-logs/autenticacao"
-
-          docker network inspect conexao-network >/dev/null 2>&1 || docker network create conexao-network
-
-          # Login GHCR se credenciais existirem (opcional)
-          if [ -n "${{ secrets.GHCR_USERNAME || '' }}" ] && [ -n "${{ secrets.GHCR_TOKEN || '' }}" ]; then
-            echo "🔑 Efetuando login no GHCR..."
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin || true
-          fi
-
-          echo "📥 Pull da imagem por digest"
-          docker pull "$IMAGE_REF"
-
-          if docker ps -q -f name=$CONTAINER_NAME | grep -q .; then
-            docker tag $CONTAINER_NAME ${CONTAINER_NAME}:backup-$(date +%Y%m%d-%H%M%S) || true
-          fi
-
-          docker stop $CONTAINER_NAME || true
-          docker rm $CONTAINER_NAME || true
-
-          mkdir -p "$LOG_DIR"
-
-          docker run -d \
-            --name $CONTAINER_NAME \
-            --network conexao-network \
-            --restart unless-stopped \
-            -p 8081:8081 \
-            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
-            --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=60s \
-            -v "$LOG_DIR":/app/logs \
-            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
-            -e SPRING_PROFILES_ACTIVE=prod,azure \
-            -e ENVIRONMENT=production \
-            -e SERVER_PORT=8081 \
-            -e TZ=America/Sao_Paulo \
-            -e AZURE_KEYVAULT_ENABLED=true \
-            -e AZURE_KEYVAULT_ENDPOINT='${{ secrets.AZURE_KEYVAULT_ENDPOINT }}' \
-            -e AZURE_CLIENT_ID='${{ secrets.AZURE_CLIENT_ID }}' \
-            -e AZURE_CLIENT_SECRET='${{ secrets.AZURE_CLIENT_SECRET }}' \
-            -e AZURE_TENANT_ID='${{ secrets.AZURE_TENANT_ID }}' \
-            --label "traefik.enable=true" \
-            --label "traefik.docker.network=conexao-network" \
-            --label "traefik.http.routers.autenticacao.rule=Host(\`auth.conexaodesorte.com.br\`)" \
-            --label "traefik.http.routers.autenticacao.entrypoints=websecure" \
-            --label "traefik.http.routers.autenticacao.tls.certresolver=letsencrypt" \
-            --label "traefik.http.services.autenticacao.loadbalancer.server.port=8081" \
-            "$IMAGE_REF"
-
-          echo "⏳ Aguardando saúde do container"
-          for i in $(seq 1 10); do
-            if curl -fsS http://localhost:8081/actuator/health >/dev/null 2>&1; then
-              echo "✅ Container saudável"
-              break
-            fi
-            if [ "$i" -eq 10 ]; then
-              echo "❌ Healthcheck falhou"
-              docker logs $CONTAINER_NAME --tail 100 || true
-              exit 1
-            fi
-            sleep 20
-          done
-
-          docker image prune -f --filter until=24h || true
-          echo "✅ Deploy concluído"
-          REMOTE
 
   notify:
     runs-on: ubuntu-latest
