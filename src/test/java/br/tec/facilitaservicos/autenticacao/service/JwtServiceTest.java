@@ -1,25 +1,28 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-import com.nimbusds.jwt.JWTClaimsSet;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.context.ActiveProfiles;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
-
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.LocalDateTime;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.context.ActiveProfiles;
+
+import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 /**
  * Testes unitários para JwtService.
@@ -32,19 +35,23 @@ class JwtServiceTest {
     @Mock
     private KeyVaultService keyVaultService;
 
-    @Mock
-    private RSAPrivateKey mockPrivateKey;
-
-    @Mock
-    private RSAPublicKey mockPublicKey;
-
     @InjectMocks
     private JwtService jwtService;
 
     private Usuario usuario;
+    private RSAPrivateKey realPrivateKey;
+    private RSAPublicKey realPublicKey;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws NoSuchAlgorithmException {
+        // Gerar chaves RSA reais para os testes
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+
+        realPrivateKey = (RSAPrivateKey) keyPair.getPrivate();
+        realPublicKey = (RSAPublicKey) keyPair.getPublic();
+
         // Setup do usuário
         usuario = new Usuario();
         usuario.setId(1L);
@@ -63,7 +70,7 @@ class JwtServiceTest {
     @DisplayName("Deve gerar access token com sucesso")
     void deveGerarAccessTokenComSucesso() {
         // Arrange
-        when(keyVaultService.getPrivateKey()).thenReturn(Mono.just(mockPrivateKey));
+        when(keyVaultService.getPrivateKey()).thenReturn(Mono.just(realPrivateKey));
         when(keyVaultService.getKeyId()).thenReturn(Mono.just("test-key-id"));
 
         // Act & Assert
@@ -86,7 +93,7 @@ class JwtServiceTest {
     void deveValidarAccessTokenComSucesso() {
         // Arrange
         String validToken = "valid.jwt.token";
-        when(keyVaultService.getPublicKey()).thenReturn(Mono.just(mockPublicKey));
+        when(keyVaultService.getPublicKey()).thenReturn(Mono.just(realPublicKey));
 
         // Note: Para um teste real, precisaríamos de um token JWT válido
         // Por simplicidade, vamos testar o fluxo reativo
@@ -103,12 +110,8 @@ class JwtServiceTest {
     @DisplayName("Deve gerar JWK Set com sucesso")
     void deveGerarJwkSetComSucesso() {
         // Arrange
-        when(keyVaultService.getPublicKey()).thenReturn(Mono.just(mockPublicKey));
+        when(keyVaultService.getPublicKey()).thenReturn(Mono.just(realPublicKey));
         when(keyVaultService.getKeyId()).thenReturn(Mono.just("test-key-id"));
-
-        // Mock das propriedades da chave pública
-        when(mockPublicKey.getModulus()).thenReturn(java.math.BigInteger.valueOf(12345));
-        when(mockPublicKey.getPublicExponent()).thenReturn(java.math.BigInteger.valueOf(65537));
 
         // Act & Assert
         StepVerifier.create(jwtService.generateJwkSet())
@@ -146,6 +149,8 @@ class JwtServiceTest {
         // Arrange
         when(keyVaultService.getPrivateKey())
                 .thenReturn(Mono.error(new RuntimeException("KeyVault error")));
+        when(keyVaultService.getKeyId())
+                .thenReturn(Mono.just("test-key-id"));
 
         // Act & Assert
         StepVerifier.create(jwtService.generateAccessToken(usuario))
@@ -177,6 +182,8 @@ class JwtServiceTest {
         // Arrange
         when(keyVaultService.getPublicKey())
                 .thenReturn(Mono.error(new RuntimeException("KeyVault error")));
+        when(keyVaultService.getKeyId())
+                .thenReturn(Mono.just("test-key-id"));
 
         // Act & Assert
         StepVerifier.create(jwtService.generateJwkSet())
@@ -191,7 +198,7 @@ class JwtServiceTest {
     void deveCriarClaimsCorretosParaUsuario() {
         // Este teste verifica indiretamente através da geração do token
         // Arrange
-        when(keyVaultService.getPrivateKey()).thenReturn(Mono.just(mockPrivateKey));
+        when(keyVaultService.getPrivateKey()).thenReturn(Mono.just(realPrivateKey));
         when(keyVaultService.getKeyId()).thenReturn(Mono.just("test-key-id"));
 
         // Act & Assert

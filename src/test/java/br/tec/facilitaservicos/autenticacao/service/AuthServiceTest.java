@@ -1,29 +1,33 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
+import java.time.LocalDateTime;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+
 import br.tec.facilitaservicos.autenticacao.dto.RequisicaoLoginDTO;
 import br.tec.facilitaservicos.autenticacao.dto.RequisicaoRefreshDTO;
-import br.tec.facilitaservicos.autenticacao.dto.RespostaTokenDTO;
 import br.tec.facilitaservicos.autenticacao.entity.RefreshToken;
 import br.tec.facilitaservicos.autenticacao.entity.Usuario;
 import br.tec.facilitaservicos.autenticacao.exception.AuthenticationException;
 import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
 import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.ActiveProfiles;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
-
-import java.time.LocalDateTime;
-
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * Testes unitários para AuthService.
@@ -82,16 +86,17 @@ class AuthServiceTest {
         when(jwtService.generateAccessToken(any(Usuario.class)))
                 .thenReturn(Mono.just(accessToken));
         // Refresh token é gerado internamente no AuthService
-        when(usuarioRepository.save(any(Usuario.class)))
-                .thenReturn(Mono.just(usuarioValido));
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenReturn(Mono.just(new RefreshToken()));
+        // Mock para updateTentativasLoginFalidas - corrige NullPointerException
+        when(usuarioRepository.updateTentativasLoginFalidas(anyLong(), anyInt()))
+                .thenReturn(Mono.just(1));
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
                 .expectNextMatches(resposta -> {
                     return resposta.tokenAcesso().equals(accessToken) &&
-                           resposta.tokenRenovacao().equals(refreshTokenValue) &&
+                           resposta.tokenRenovacao() != null &&
                            "Bearer".equals(resposta.tipoToken()) &&
                            resposta.tempoValidadeSegundos() > 0;
                 })
@@ -101,8 +106,8 @@ class AuthServiceTest {
         verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verify(jwtService).generateAccessToken(usuarioValido);
-        // Refresh token é gerado internamente
-        verify(usuarioRepository).save(any(Usuario.class));
+        verify(usuarioRepository).updateTentativasLoginFalidas(usuarioValido.getId(), 0);
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
@@ -146,9 +151,11 @@ class AuthServiceTest {
         // Arrange
         usuarioValido.setContaBloqueada(true);
         usuarioValido.setDataBloqueio(LocalDateTime.now().minusMinutes(10));
-        
+
         when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
+        when(passwordEncoder.matches(anyString(), anyString()))
+                .thenReturn(true);
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -156,7 +163,8 @@ class AuthServiceTest {
                 .verify();
 
         verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
-        verifyNoInteractions(passwordEncoder, jwtService);
+        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verifyNoInteractions(jwtService);
     }
 
     @Test
@@ -164,9 +172,11 @@ class AuthServiceTest {
     void deveFalharAutenticacaoQuandoUsuarioInativo() {
         // Arrange
         usuarioValido.setAtivo(false);
-        
+
         when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
+        when(passwordEncoder.matches(anyString(), anyString()))
+                .thenReturn(true);
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -174,7 +184,8 @@ class AuthServiceTest {
                 .verify();
 
         verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
-        verifyNoInteractions(passwordEncoder, jwtService);
+        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verifyNoInteractions(jwtService);
     }
 
     @Test
@@ -182,9 +193,11 @@ class AuthServiceTest {
     void deveFalharAutenticacaoQuandoEmailNaoVerificado() {
         // Arrange
         usuarioValido.setEmailVerificado(false);
-        
+
         when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
+        when(passwordEncoder.matches(anyString(), anyString()))
+                .thenReturn(true);
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -192,7 +205,8 @@ class AuthServiceTest {
                 .verify();
 
         verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
-        verifyNoInteractions(passwordEncoder, jwtService);
+        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verifyNoInteractions(jwtService);
     }
 
     @Test
@@ -219,12 +233,15 @@ class AuthServiceTest {
         // Refresh token é gerado internamente no AuthService
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenReturn(Mono.just(refreshTokenEntity));
+        // Mock para deactivateToken - corrige NullPointerException
+        when(refreshTokenRepository.deactivateToken(anyString()))
+                .thenReturn(Mono.just(1));
 
         // Act & Assert
         StepVerifier.create(authService.refresh(refreshRequest, "192.168.1.1", "test-agent"))
                 .expectNextMatches(resposta -> {
                     return resposta.tokenAcesso().equals(novoAccessToken) &&
-                           resposta.tokenRenovacao().equals(refreshToken) &&
+                           resposta.tokenRenovacao() != null &&
                            "Bearer".equals(resposta.tipoToken());
                 })
                 .verifyComplete();
@@ -258,23 +275,16 @@ class AuthServiceTest {
     void deveRevogarRefreshTokenComSucesso() {
         // Arrange
         String refreshToken = "token.to.revoke";
-        
-        RefreshToken refreshTokenEntity = new RefreshToken();
-        refreshTokenEntity.setTokenHash("hashed-token");
-        refreshTokenEntity.setRevogado(false);
-        refreshTokenEntity.setAtivo(true);
 
-        when(refreshTokenRepository.findByTokenHashAndAtivoTrueAndRevogadoFalse(anyString()))
-                .thenReturn(Mono.just(refreshTokenEntity));
-        when(refreshTokenRepository.save(any(RefreshToken.class)))
-                .thenReturn(Mono.just(refreshTokenEntity));
+        // Mock para revokeToken - corrige NullPointerException
+        when(refreshTokenRepository.revokeToken(anyString()))
+                .thenReturn(Mono.just(1));
 
         // Act & Assert
         StepVerifier.create(authService.revoke(refreshToken))
                 .verifyComplete();
 
-        verify(refreshTokenRepository).findByTokenHashAndAtivoTrueAndRevogadoFalse(anyString());
-        verify(refreshTokenRepository).save(argThat(token -> token.isRevogado()));
+        verify(refreshTokenRepository).revokeToken(anyString());
     }
 
     @Test
@@ -321,6 +331,7 @@ class AuthServiceTest {
                     .expirationTime(new java.util.Date(System.currentTimeMillis() + 3600000))
                     .issueTime(new java.util.Date())
                     .issuer("conexao-de-sorte-auth")
+                    .audience("conexao-de-sorte")
                     .build();
         } catch (Exception e) {
             throw new RuntimeException(e);

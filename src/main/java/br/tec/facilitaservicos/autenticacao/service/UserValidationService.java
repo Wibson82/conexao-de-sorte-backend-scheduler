@@ -1,24 +1,24 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
-import br.tec.facilitaservicos.autenticacao.dto.TokenValidationResponseDTO;
-import br.tec.facilitaservicos.autenticacao.dto.UserStatusDTO;
-import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import io.github.resilience4j.retry.annotation.Retry;
-import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.stereotype.Service;
-import reactor.core.publisher.Mono;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import br.tec.facilitaservicos.autenticacao.dto.TokenValidationResponseDTO;
+import br.tec.facilitaservicos.autenticacao.dto.UserStatusDTO;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
+import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
+import reactor.core.publisher.Mono;
 
 /**
  * ============================================================================
@@ -97,7 +97,13 @@ public class UserValidationService {
         
         return usuarioRepository.findById(userId)
             .map(UsuarioDTO::from)
-            .doOnSuccess(user -> logger.debug("✅ Usuário encontrado: {}", user.toLogString()))
+            .doOnSuccess(user -> {
+                if (user != null) {
+                    logger.debug("✅ Usuário encontrado: {}", user.toLogString());
+                } else {
+                    logger.debug("❌ Usuário não encontrado: userId={}", userId);
+                }
+            })
             .timeout(Duration.ofSeconds(2));
     }
 
