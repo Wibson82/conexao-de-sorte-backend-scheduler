@@ -269,118 +269,101 @@ jobs:
           
           echo "Success: Azure Key Vault secrets loaded successfully" >&2
 
-      - name: 📊 Prepare deployment payload
+      - name: 🔧 Setup SSH for deployment
         run: |
           set -euo pipefail
-          echo "🔍 Preparing deployment payload..."
+          echo "🔧 Configuring SSH for deployment..."
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          echo "✅ SSH configured successfully"
+      - name: 🧹 Clean old containers
+        run: |
+          set -euo pipefail
+          echo "🧹 Cleaning old auth-microservice containers..."
+          
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
+            set -euo pipefail
+            echo '🔍 Checking for existing auth-microservice container...'
+            
+            # Stop and remove auth-microservice container
+            if docker ps -a --format '{{.Names}}' | grep -q '^auth-microservice$'; then
+              echo '🛑 Stopping container: auth-microservice'
+              docker stop 'auth-microservice' || true
+              echo '🗑️ Removing container: auth-microservice'
+              docker rm 'auth-microservice' || true
+            else
+              echo '✅ No auth-microservice container found'
+            fi
+          "
+          echo "✅ Container cleanup completed"
+
+      - name: 🚀 Deploy to Ubuntu server
+        run: |
+          set -euo pipefail
+          echo "🚀 Starting deployment to Ubuntu server..."
+          echo "   - Service: auth-microservice"
+          echo "   - Image: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
+          
+          # Deploy to remote server via SSH
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} << 'REMOTE_SCRIPT'
+          set -euo pipefail
+          export TZ=America/Sao_Paulo
           
           IMAGE_DIGEST="${{ needs.build-image.outputs.image-digest }}"
           IMAGE_NAME_LOWER="${{ needs.build-image.outputs.image-name-lower }}"
           FULL_IMAGE="ghcr.io/${IMAGE_NAME_LOWER}@${IMAGE_DIGEST}"
           
-          # Create deployment payload with Azure Key Vault secrets
-          DEPLOYMENT_PAYLOAD=$(cat <<EOF
-          {
-            "service": "auth-microservice",
-            "image": "${FULL_IMAGE}",
-            "port": "8081",
-            "environment": "production",
-            "secrets_dir": "${SECRETS_DIR}",
-            "environment_variables": {
-              "JAVA_TOOL_OPTIONS": "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8",
-              "SPRING_PROFILES_ACTIVE": "prod,azure",
-              "ENVIRONMENT": "production",
-              "SERVER_PORT": "8081",
-              "SPRING_CONFIG_IMPORT": "optional:configtree:/run/secrets/",
-              "TZ": "${{ env.TZ }}",
-              "AZURE_CLIENT_ID": "${{ secrets.AZURE_CLIENT_ID }}",
-              "AZURE_TENANT_ID": "${{ secrets.AZURE_TENANT_ID }}",
-              "AZURE_KEYVAULT_ENDPOINT": "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}",
-              "AZURE_KEYVAULT_ENABLED": "true",
-              "conexao_de_sorte_database_r2dbc_url": "${DB_R2DBC_URL}",
-              "conexao_de_sorte_database_username": "${DB_USERNAME}",
-              "conexao_de_sorte_database_password": "${DB_PASSWORD}",
-              "conexao_de_sorte_database_jdbc_url": "${DB_JDBC_URL}",
-              "conexao_de_sorte_redis_host": "${REDIS_HOST}",
-              "conexao_de_sorte_redis_port": "${REDIS_PORT}",
-              "conexao_de_sorte_redis_password": "${REDIS_PASSWORD}",
-              "conexao_de_sorte_redis_database": "${REDIS_DATABASE}",
-              "conexao_de_sorte_jwt_secret": "${JWT_SECRET}",
-              "conexao_de_sorte_jwt_key_id": "${JWT_KEY_ID}",
-              "conexao_de_sorte_jwt_signing_key": "${JWT_SIGNING_KEY}",
-              "conexao_de_sorte_jwt_verification_key": "${JWT_VERIFICATION_KEY}",
-              "conexao_de_sorte_jwt_issuer": "${JWT_ISSUER}",
-              "conexao_de_sorte_jwt_jwks_uri": "${JWT_JWKS_URI}",
-              "conexao_de_sorte_jwt_publickey": "/run/secrets/jwt_public.pem",
-              "conexao_de_sorte_jwt_privatekey": "/run/secrets/jwt_private.pem",
-              "conexao_de_sorte_encryption_master_key": "/run/secrets/encryption_master_key"
-            },
-            "labels": {
-              "traefik.enable": "true",
-              "traefik.docker.network": "conexao-network",
-              "traefik.http.routers.auth.rule": "Host(\`auth.conexaodesorte.com.br\`)",
-              "traefik.http.routers.auth.entrypoints": "websecure",
-              "traefik.http.routers.auth.tls.certresolver": "letsencrypt",
-              "traefik.http.services.auth.loadbalancer.server.port": "8081"
-            }
-          }
-          EOF
-          )
+          echo "🔍 Deployment variables:"
+          echo "   - IMAGE_DIGEST: ${IMAGE_DIGEST}"
+          echo "   - IMAGE_NAME_LOWER: ${IMAGE_NAME_LOWER}"
+          echo "   - FULL_IMAGE: ${FULL_IMAGE}"
           
-          echo "DEPLOYMENT_PAYLOAD<<EOF" >> $GITHUB_ENV
-          echo "$DEPLOYMENT_PAYLOAD" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "🔑 Logging in to GHCR..."
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
           
-          echo "✅ Deployment payload prepared"
-
-      - name: 🚀 Deploy via webhook with Azure secrets
-        run: |
-          set -euo pipefail
-          echo "🚀 Deploying auth-microservice via webhook with Azure Key Vault secrets..."
+          echo "📥 Pulling image: ${FULL_IMAGE}"
+          docker pull "${FULL_IMAGE}"
           
-          # Use GitHub API as webhook endpoint (fallback)
-          WEBHOOK_ENDPOINT="https://api.github.com/repos/${{ github.repository }}/dispatches"
-          WEBHOOK_SECRET="${{ secrets.GITHUB_TOKEN }}"
+          echo "🌐 Creating Docker network if it doesn't exist..."
+          docker network create conexao-network 2>/dev/null || true
           
-          # Generate webhook signature
-          WEBHOOK_SIGNATURE=$(echo -n "$DEPLOYMENT_PAYLOAD" | openssl dgst -sha256 -hmac "${WEBHOOK_SECRET}" -binary | base64)
+          echo "🚀 Starting auth-microservice container..."
+          docker run -d \
+            --name "auth-microservice" \
+            --network conexao-network \
+            --restart unless-stopped \
+            -p "8081:8081" \
+            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
+            --health-interval=60s \
+            --health-timeout=30s \
+            --health-retries=3 \
+            --health-start-period=120s \
+            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -e SPRING_PROFILES_ACTIVE="prod,azure" \
+            -e ENVIRONMENT="production" \
+            -e SERVER_PORT="8081" \
+            -e TZ="America/Sao_Paulo" \
+            -e AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            -e AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            -e AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
+            -e AZURE_KEYVAULT_ENABLED="true" \
+            --label "traefik.enable=true" \
+            --label "traefik.docker.network=conexao-network" \
+            --label "traefik.http.routers.auth.rule=Host(\`auth.conexaodesorte.com.br\`)" \
+            --label "traefik.http.routers.auth.entrypoints=websecure" \
+            --label "traefik.http.routers.auth.tls.certresolver=letsencrypt" \
+            --label "traefik.http.services.auth.loadbalancer.server.port=8081" \
+            "${FULL_IMAGE}"
           
-          echo "🔍 Sending deployment request..."
-          echo "   - Service: auth-microservice" 
-          echo "   - Image: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
-          echo "   - Secrets loaded from Azure Key Vault"
+          echo "✅ Container deployed successfully"
+          echo "🔍 Verifying container status..."
+          docker ps --filter name=auth-microservice --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           
-          # Send deployment webhook
-          RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-Webhook-Signature: sha256=${WEBHOOK_SIGNATURE}" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            --data "$DEPLOYMENT_PAYLOAD" \
-            "${WEBHOOK_ENDPOINT}" || echo "HTTPSTATUS:000")
+          REMOTE_SCRIPT
           
-          HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-          RESPONSE_BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
-          
-          echo "📊 Response: ${HTTP_CODE}"
-          if [[ "$HTTP_CODE" =~ ^[2-3][0-9][0-9]$ ]]; then
-            echo "✅ Deployment webhook sent successfully!"
-          else
-            echo "⚠️ Webhook response: ${HTTP_CODE} - ${RESPONSE_BODY}"
-            echo "ℹ️ This may be expected if using GitHub API as fallback"
-          fi
-
-      - name: ✅ Deployment status check  
-        run: |
-          echo "🔍 Deployment summary:"
-          echo "   - Service: auth-microservice"
-          echo "   - Image: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
-          echo "   - Azure Key Vault secrets loaded: ✅"
-          echo "   - Webhook deployment attempted: ✅"
-          echo ""
-          echo "⚠️ Note: Direct deployment requires self-hosted runner."
-          echo "📋 For now, webhook deployment payload has been prepared with all Azure secrets."
-          echo "✅ Workflow completed successfully with Azure OIDC authentication."
+          echo "✅ Deployment completed successfully"
 
   notify:
     runs-on: ubuntu-latest
