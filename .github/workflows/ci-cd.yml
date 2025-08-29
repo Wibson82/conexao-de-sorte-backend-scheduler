@@ -201,9 +201,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 🔐 Configurar SSH
+      - name: 🔐 Validar e configurar SSH
         run: |
           set -euo pipefail
+          
+          echo "🔍 Validando secrets SSH necessários..."
+          
+          # Validar se todos os secrets SSH estão configurados
+          if [[ -z "${{ secrets.VPS_SSH_KEY }}" ]]; then
+            echo "❌ ERRO: Secret VPS_SSH_KEY não está configurado"
+            echo "📋 Configure os seguintes secrets no repositório:"
+            echo "   - VPS_SSH_KEY (chave privada SSH)"
+            echo "   - VPS_SSH_PORT (porta SSH do servidor)"
+            echo "   - VPS_HOST (IP/hostname do servidor)"
+            echo "   - VPS_USERNAME (nome do usuário SSH)"
+            exit 1
+          fi
+          
+          if [[ -z "${{ secrets.VPS_SSH_PORT }}" ]]; then
+            echo "❌ ERRO: Secret VPS_SSH_PORT não está configurado"
+            exit 1
+          fi
+          
+          if [[ -z "${{ secrets.VPS_HOST }}" ]]; then
+            echo "❌ ERRO: Secret VPS_HOST não está configurado"
+            exit 1
+          fi
+          
+          if [[ -z "${{ secrets.VPS_USERNAME }}" ]]; then
+            echo "❌ ERRO: Secret VPS_USERNAME não está configurado"
+            exit 1
+          fi
+          
+          echo "✅ Todos os secrets SSH estão configurados"
+          
+          # Configurar SSH
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
