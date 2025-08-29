@@ -201,55 +201,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 📊 Validar e configurar secrets GitHub
+      - name: 🔐 Login to Azure (OIDC)
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: 📊 Configurar secrets do Azure Key Vault
         run: |
           set -euo pipefail
-          echo "🔍 Validando secrets disponíveis no GitHub..."
+          echo "🔍 Configurando secrets do Azure Key Vault..."
           
-          # Validar secrets obrigatórios
-          MISSING_SECRETS=""
+          # Extrair nome do vault
+          VAULT_NAME=$(echo "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" | sed 's|https://||' | sed 's|\.vault\.azure\.net/||')
+          echo "🏪 Vault: $VAULT_NAME"
           
-          if [[ -z "${{ secrets.AUTH_DB_PASSWORD }}" ]]; then
-            MISSING_SECRETS="${MISSING_SECRETS} AUTH_DB_PASSWORD"
-          fi
+          # Buscar e configurar secrets do Azure Key Vault
+          echo "🔑 Configurando database secrets..."
+          DB_PASSWORD=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-password" --query "value" -o tsv)
+          DB_R2DBC_URL=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-r2dbc-url" --query "value" -o tsv)
+          DB_USERNAME=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-username" --query "value" -o tsv)
+          DB_FLYWAY_URL=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-jdbc-url" --query "value" -o tsv)
           
-          if [[ -z "${{ secrets.JWT_SECRET_KEY }}" ]]; then
-            MISSING_SECRETS="${MISSING_SECRETS} JWT_SECRET_KEY"
-          fi
+          echo "🔑 Configurando JWT secrets..."
+          JWT_SECRET=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-secret" --query "value" -o tsv)
+          JWT_SIGNING_KEY=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-signing-key" --query "value" -o tsv)
+          JWT_VERIFICATION_KEY=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-verification-key" --query "value" -o tsv)
+          JWT_KEY_ID=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-key-id" --query "value" -o tsv)
           
-          if [[ -z "${{ secrets.REDIS_PASSWOR }}" ]]; then
-            MISSING_SECRETS="${MISSING_SECRETS} REDIS_PASSWOR"
-          fi
+          echo "🔑 Configurando Redis secrets..."
+          REDIS_PASSWORD=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-password" --query "value" -o tsv)
+          REDIS_HOST=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-host" --query "value" -o tsv)
+          REDIS_PORT=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-port" --query "value" -o tsv)
+          REDIS_DATABASE=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-database" --query "value" -o tsv)
           
-          if [[ -n "$MISSING_SECRETS" ]]; then
-            echo "❌ ERRO: Os seguintes secrets são obrigatórios mas estão ausentes:"
-            echo "   $MISSING_SECRETS"
-            exit 1
-          fi
+          # Configurar variáveis de ambiente
+          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
+          echo "DB_R2DBC_URL=${DB_R2DBC_URL}" >> $GITHUB_ENV
+          echo "DB_USERNAME=${DB_USERNAME}" >> $GITHUB_ENV  
+          echo "DB_FLYWAY_URL=${DB_FLYWAY_URL}" >> $GITHUB_ENV
+          echo "JWT_SECRET=${JWT_SECRET}" >> $GITHUB_ENV
+          echo "JWT_SIGNING_KEY=${JWT_SIGNING_KEY}" >> $GITHUB_ENV
+          echo "JWT_VERIFICATION_KEY=${JWT_VERIFICATION_KEY}" >> $GITHUB_ENV
+          echo "JWT_KEY_ID=${JWT_KEY_ID}" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> $GITHUB_ENV
+          echo "REDIS_HOST=${REDIS_HOST}" >> $GITHUB_ENV
+          echo "REDIS_PORT=${REDIS_PORT}" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=${REDIS_DATABASE}" >> $GITHUB_ENV
           
-          echo "✅ Todos os secrets obrigatórios estão configurados"
-          
-          # Configurar variáveis de ambiente (usando defaults quando necessário)
-          echo "DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}" >> $GITHUB_ENV
-          echo "JWT_SECRET=${{ secrets.JWT_SECRET_KEY }}" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWOR }}" >> $GITHUB_ENV
-          
-          # Database configs com defaults
-          echo "DB_R2DBC_URL=r2dbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=false" >> $GITHUB_ENV
-          echo "DB_USERNAME=auth_user" >> $GITHUB_ENV
-          echo "DB_FLYWAY_URL=jdbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=false" >> $GITHUB_ENV
-          
-          # Redis configs com defaults  
-          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
-          echo "REDIS_PORT=6379" >> $GITHUB_ENV
-          echo "REDIS_DATABASE=1" >> $GITHUB_ENV
-          
-          # Webhook config (pode usar GitHub webhook URL como fallback)
+          # Webhook config usando GitHub como fallback
           WEBHOOK_URL="https://api.github.com/repos/${{ github.repository }}/dispatches"
           echo "WEBHOOK_ENDPOINT=${WEBHOOK_URL}" >> $GITHUB_ENV
           echo "WEBHOOK_SECRET=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
           
-          echo "Success: GitHub secrets configured successfully" >&2
+          echo "✅ Azure Key Vault secrets configured successfully"
 
       - name: 📊 Prepare deployment payload
         run: |
@@ -277,6 +283,9 @@ jobs:
               "REDIS_PASSWORD": "${REDIS_PASSWORD}",
               "REDIS_DATABASE": "${REDIS_DATABASE}",
               "JWT_SECRET": "${JWT_SECRET}",
+              "JWT_SIGNING_KEY": "${JWT_SIGNING_KEY}",
+              "JWT_VERIFICATION_KEY": "${JWT_VERIFICATION_KEY}",
+              "JWT_KEY_ID": "${JWT_KEY_ID}",
               "SPRING_PROFILES_ACTIVE": "azure"
             },
             "labels": {
