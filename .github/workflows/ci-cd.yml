@@ -193,7 +193,7 @@ jobs:
     needs: [build-image, sign-image]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production
+    name: 🌟 Deploy to Production (OIDC + Webhook)
     permissions:
       id-token: write
       contents: read
@@ -201,189 +201,186 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 🔐 Validar e configurar SSH
-        run: |
-          set -euo pipefail
-          
-          echo "🔍 Validando secrets SSH necessários..."
-          
-          # Validar se todos os secrets SSH estão configurados
-          if [[ -z "${{ secrets.VPS_SSH_KEY }}" ]]; then
-            echo "❌ ERRO: Secret VPS_SSH_KEY não está configurado"
-            echo "📋 Configure os seguintes secrets no repositório:"
-            echo "   - VPS_SSH_KEY (chave privada SSH)"
-            echo "   - VPS_SSH_PORT (porta SSH do servidor)"
-            echo "   - VPS_HOST (IP/hostname do servidor)"
-            echo "   - VPS_USERNAME (nome do usuário SSH)"
-            exit 1
-          fi
-          
-          if [[ -z "${{ secrets.VPS_SSH_PORT }}" ]]; then
-            echo "❌ ERRO: Secret VPS_SSH_PORT não está configurado"
-            exit 1
-          fi
-          
-          if [[ -z "${{ secrets.VPS_HOST }}" ]]; then
-            echo "❌ ERRO: Secret VPS_HOST não está configurado"
-            exit 1
-          fi
-          
-          if [[ -z "${{ secrets.VPS_USERNAME }}" ]]; then
-            echo "❌ ERRO: Secret VPS_USERNAME não está configurado"
-            exit 1
-          fi
-          
-          echo "✅ Todos os secrets SSH estão configurados"
-          
-          # Configurar SSH
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p ${{ secrets.VPS_SSH_PORT }} ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-          echo "✅ SSH configurado com sucesso"
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 📊 Validar variáveis de deploy
+      - name: Load Azure Key Vault secrets
         run: |
           set -euo pipefail
-          echo "🔍 Validando variáveis de deploy..."
-          echo "   - IMAGE_NAME: [${{ env.IMAGE_NAME }}]"
-          echo "   - SERVICE_NAME: [${{ env.SERVICE_NAME }}]"
-          echo "   - REGISTRY: [${{ env.REGISTRY }}]"
+          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
+          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
+            VAULT="${BASH_REMATCH[1]}"
+          else
+            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+            exit 1
+          fi
+          
+          echo "Loading secrets from Azure Key Vault: $VAULT" >&2
+          echo "VAULT=$VAULT" >> "$GITHUB_ENV"
+
+          get() { 
+            echo "Fetching secret: $1" >&2
+            SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
+            if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
+              echo "ERROR: Secret $1 not found in Azure Key Vault $VAULT" >&2
+              exit 1
+            fi
+            echo "$SECRET_VALUE"
+          }
+
+          # Database secrets (R2DBC para projetos reativos)
+          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
+          echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          echo "DB_FLYWAY_URL=$(get conexao-de-sorte-database-flyway-url)" >> $GITHUB_ENV
+          
+          # Redis secrets
+          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
+          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=$(get conexao-de-sorte-redis-database)" >> $GITHUB_ENV
+          
+          # JWT secrets
+          echo "JWT_SIGNING_KEY=$(get conexao-de-sorte-jwt-signing-key)" >> $GITHUB_ENV
+          echo "JWT_VERIFICATION_KEY=$(get conexao-de-sorte-jwt-verification-key)" >> $GITHUB_ENV
+          echo "JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
+          echo "JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
+          
+          # Encryption secrets
+          echo "ENCRYPTION_MASTER_KEY=$(get conexao-de-sorte-encryption-master-key)" >> $GITHUB_ENV
+          
+          # OAuth2 secrets
+          echo "OAUTH2_CLIENT_ID=$(get conexao-de-sorte-oauth2-client-id)" >> $GITHUB_ENV
+          echo "OAUTH2_CLIENT_SECRET=$(get conexao-de-sorte-oauth2-client-secret)" >> $GITHUB_ENV
+
+          # Server webhook endpoint (for deployment)
+          echo "WEBHOOK_ENDPOINT=$(get conexao-de-sorte-deployment-webhook-url)" >> $GITHUB_ENV
+          echo "WEBHOOK_SECRET=$(get conexao-de-sorte-deployment-webhook-secret)" >> $GITHUB_ENV
+          
+          echo "Success: Azure Key Vault secrets loaded successfully" >&2
+
+      - name: 📊 Prepare deployment payload
+        run: |
+          set -euo pipefail
+          echo "🔍 Preparing deployment payload..."
           
           IMAGE_DIGEST="${{ needs.build-image.outputs.image-digest }}"
           IMAGE_NAME_LOWER="${{ needs.build-image.outputs.image-name-lower }}"
-          
-          if [[ -z "${IMAGE_DIGEST}" ]]; then
-            echo "❌ ERRO: IMAGE_DIGEST não está definido"
-            exit 1
-          fi
-          if [[ -z "${IMAGE_NAME_LOWER}" ]]; then
-            echo "❌ ERRO: IMAGE_NAME_LOWER não está definido"
-            exit 1
-          fi
-          
           FULL_IMAGE="ghcr.io/${IMAGE_NAME_LOWER}@${IMAGE_DIGEST}"
-          echo "FULL_IMAGE=${FULL_IMAGE}" >> $GITHUB_ENV
-          echo "✅ Imagem final: ${FULL_IMAGE}"
-
-      - name: 🛑 Limpeza de containers antigos
-        run: |
-          set -euo pipefail
-          echo "🧹 Limpando containers antigos do auth-microservice..."
-
-          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
-            set -euo pipefail
-            echo '🔍 Verificando containers existentes...'
-
-            # Parar e remover container específico
-            if docker ps -a --format '{{.Names}}' | grep -q '^auth-microservice$'; then
-              echo '🛑 Parando container: auth-microservice'
-              docker stop 'auth-microservice' || true
-              echo '🗑️ Removendo container: auth-microservice'
-              docker rm 'auth-microservice' || true
-            else
-              echo '✅ Nenhum container auth-microservice encontrado'
-            fi
-          "
-          echo "✅ Limpeza concluída"
-
-      - name: 🚀 Deploy remoto do microsserviço de autenticação
-        run: |
-          set -euo pipefail
-          echo "🚀 Iniciando deploy remoto do microsserviço de autenticação..."
-          echo "   - Imagem: ${{ env.FULL_IMAGE }}"
-
-          # Executar deploy no servidor remoto via SSH
-          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} << 'REMOTE_SCRIPT'
-          set -euo pipefail
-          export TZ=America/Sao_Paulo
-
-          # Variáveis do deploy
-          FULL_IMAGE="${{ env.FULL_IMAGE }}"
-          CONTAINER_NAME="auth-microservice"
-          SERVER_PORT="8081"
-
-          echo "🔍 Variáveis recebidas no servidor:"
-          echo "   - FULL_IMAGE: [${FULL_IMAGE}]"
-          echo "   - CONTAINER_NAME: [${CONTAINER_NAME}]"
-          echo "   - SERVER_PORT: [${SERVER_PORT}]"
-
-          echo "🔑 Fazendo login no GitHub Container Registry..."
-          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
-
-          echo "📥 Baixando imagem: ${FULL_IMAGE}"
-          docker pull "${FULL_IMAGE}"
-
-          echo "🌐 Criando rede Docker se não existir..."
-          docker network create conexao-network 2>/dev/null || true
-
-          echo "📁 Criando diretório de logs..."
-          mkdir -p $HOME/conexao-logs/auth-microservice
-
-          echo "🚀 Iniciando container do microsserviço de autenticação..."
-          docker run -d \
-            --name "${CONTAINER_NAME}" \
-            --network conexao-network \
-            --restart unless-stopped \
-            -p "${SERVER_PORT}:${SERVER_PORT}" \
-            --health-cmd="curl -f http://localhost:${SERVER_PORT}/api/v1/auth/actuator/health || exit 1" \
-            --health-interval=60s \
-            --health-timeout=30s \
-            --health-retries=3 \
-            --health-start-period=120s \
-            -v $HOME/conexao-logs/auth-microservice:/app/logs \
-            -e SPRING_PROFILES_ACTIVE=azure \
-            -e ENVIRONMENT=production \
-            -e SERVER_PORT="${SERVER_PORT}" \
-            -e AZURE_KEYVAULT_ENABLED=true \
-            -e AZURE_KEYVAULT_ENDPOINT='${{ secrets.AZURE_KEYVAULT_ENDPOINT }}' \
-            -e AZURE_CLIENT_ID='${{ secrets.AZURE_CLIENT_ID }}' \
-            -e AZURE_CLIENT_SECRET='${{ secrets.AZURE_CLIENT_SECRET }}' \
-            -e AZURE_TENANT_ID='${{ secrets.AZURE_TENANT_ID }}' \
-            -e SPRING_R2DBC_URL='${{ secrets.CONEXAO_DE_SORTE_DATABASE_R2DBC_URL }}' \
-            -e SPRING_R2DBC_USERNAME='${{ secrets.CONEXAO_DE_SORTE_DATABASE_USERNAME }}' \
-            -e SPRING_R2DBC_PASSWORD='${{ secrets.AUTH_DB_PASSWORD }}' \
-            -e SPRING_DATA_REDIS_HOST='${{ secrets.CONEXAO_DE_SORTE_REDIS_HOST }}' \
-            -e SPRING_DATA_REDIS_PORT='${{ secrets.CONEXAO_DE_SORTE_REDIS_PORT }}' \
-            -e SPRING_DATA_REDIS_PASSWORD='${{ secrets.REDIS_PASSWOR }}' \
-            -e SPRING_DATA_REDIS_DATABASE='${{ secrets.CONEXAO_DE_SORTE_REDIS_DATABASE }}' \
-            -e JWT_SECRET_KEY='${{ secrets.JWT_SECRET_KEY }}' \
-            -e TZ=America/Sao_Paulo \
-            --label "traefik.enable=true" \
-            --label "traefik.docker.network=conexao-network" \
-            --label "traefik.http.routers.auth-microservice.rule=Host(\`auth.conexaodesorte.com.br\`)" \
-            --label "traefik.http.routers.auth-microservice.entrypoints=websecure" \
-            --label "traefik.http.routers.auth-microservice.tls.certresolver=letsencrypt" \
-            --label "traefik.http.services.auth-microservice.loadbalancer.server.port=${SERVER_PORT}" \
-            "${FULL_IMAGE}"
-
-          echo "✅ Deploy concluído com sucesso!"
-          echo "📦 Container: $(docker ps --filter name=${CONTAINER_NAME} --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}')"
-          REMOTE_SCRIPT
-
-      - name: ✅ Verificar saúde do serviço
-        run: |
-          echo "🔍 Verificando saúde do microsserviço de autenticação..."
           
-          # Aguardar um pouco para o container inicializar
-          sleep 30
+          # Create deployment payload
+          DEPLOYMENT_PAYLOAD=$(cat <<EOF
+          {
+            "service": "auth-microservice",
+            "image": "${FULL_IMAGE}",
+            "port": "8081",
+            "environment": "production",
+            "secrets": {
+              "AZURE_CLIENT_ID": "${{ secrets.AZURE_CLIENT_ID }}",
+              "AZURE_TENANT_ID": "${{ secrets.AZURE_TENANT_ID }}",
+              "AZURE_CLIENT_SECRET": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "AZURE_KEYVAULT_ENDPOINT": "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}",
+              "DB_R2DBC_URL": "${DB_R2DBC_URL}",
+              "DB_USERNAME": "${DB_USERNAME}",
+              "DB_PASSWORD": "${DB_PASSWORD}",
+              "DB_FLYWAY_URL": "${DB_FLYWAY_URL}",
+              "REDIS_HOST": "${REDIS_HOST}",
+              "REDIS_PORT": "${REDIS_PORT}",
+              "REDIS_PASSWORD": "${REDIS_PASSWORD}",
+              "REDIS_DATABASE": "${REDIS_DATABASE}",
+              "JWT_SIGNING_KEY": "${JWT_SIGNING_KEY}",
+              "JWT_VERIFICATION_KEY": "${JWT_VERIFICATION_KEY}",
+              "JWT_KEY_ID": "${JWT_KEY_ID}",
+              "JWT_SECRET": "${JWT_SECRET}",
+              "ENCRYPTION_MASTER_KEY": "${ENCRYPTION_MASTER_KEY}",
+              "OAUTH2_CLIENT_ID": "${OAUTH2_CLIENT_ID}",
+              "OAUTH2_CLIENT_SECRET": "${OAUTH2_CLIENT_SECRET}"
+            },
+            "labels": {
+              "traefik.enable": "true",
+              "traefik.docker.network": "conexao-network",
+              "traefik.http.routers.auth-microservice.rule": "Host(\`auth.conexaodesorte.com.br\`)",
+              "traefik.http.routers.auth-microservice.entrypoints": "websecure",
+              "traefik.http.routers.auth-microservice.tls.certresolver": "letsencrypt",
+              "traefik.http.services.auth-microservice.loadbalancer.server.port": "8081"
+            }
+          }
+          EOF
+          )
           
-          # Verificar via SSH se o serviço está respondendo
-          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.VPS_SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "
-            echo '🔍 Testando health check do auth-microservice...'
-            for i in \$(seq 1 10); do
-              echo \"⏳ Tentativa \$i/10...\"
-              if curl -fsS http://localhost:8081/api/v1/auth/actuator/health >/dev/null 2>&1; then
-                echo '✅ Auth microservice está saudável!'
-                exit 0
-              fi
-              sleep 10
-            done
-            echo '❌ Health check falhou após 10 tentativas'
-            echo '📋 Logs do container (últimas 50 linhas):'
-            docker logs auth-microservice --tail 50 || true
+          echo "DEPLOYMENT_PAYLOAD<<EOF" >> $GITHUB_ENV
+          echo "$DEPLOYMENT_PAYLOAD" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
+          echo "✅ Deployment payload prepared"
+
+      - name: 🚀 Deploy via webhook (OIDC puro - sem SSH)
+        run: |
+          set -euo pipefail
+          echo "🚀 Deploying auth-microservice via OIDC webhook..."
+          
+          # Generate webhook signature for authentication
+          WEBHOOK_SIGNATURE=$(echo -n "$DEPLOYMENT_PAYLOAD" | openssl dgst -sha256 -hmac "${WEBHOOK_SECRET}" -binary | base64)
+          
+          echo "🔍 Sending deployment request..."
+          echo "   - Webhook endpoint: ${WEBHOOK_ENDPOINT}"
+          echo "   - Service: auth-microservice"
+          echo "   - Image: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
+          
+          # Send webhook deployment request
+          RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Signature: sha256=${WEBHOOK_SIGNATURE}" \
+            -H "X-GitHub-Event: deployment" \
+            -H "X-GitHub-Delivery: ${{ github.run_id }}" \
+            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
+            --data "$DEPLOYMENT_PAYLOAD" \
+            "${WEBHOOK_ENDPOINT}")
+          
+          HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+          RESPONSE_BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
+          
+          echo "📊 Response status: ${HTTP_CODE}"
+          echo "📋 Response body: ${RESPONSE_BODY}"
+          
+          if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
+            echo "✅ Deployment webhook sent successfully!"
+          else
+            echo "❌ Deployment webhook failed with HTTP ${HTTP_CODE}"
+            echo "Response: ${RESPONSE_BODY}"
             exit 1
-          "
+          fi
+
+      - name: ✅ Verificar status do deployment
+        run: |
+          echo "🔍 Aguardando deployment do microsserviço de autenticação..."
+          echo "⏳ Esperando 60 segundos para o serviço inicializar..."
+          sleep 60
+          
+          # Test if the service is accessible via public endpoint
+          echo "🔍 Testando endpoint público do auth-microservice..."
+          for i in $(seq 1 10); do
+            echo "⏳ Tentativa $i/10..."
+            
+            # Try public health check endpoint
+            if curl -fsS https://auth.conexaodesorte.com.br/actuator/health >/dev/null 2>&1; then
+              echo "✅ Auth microservice está acessível publicamente!"
+              echo "🎉 Deployment completado com sucesso!"
+              exit 0
+            fi
+            
+            echo "⏳ Aguardando mais 30 segundos..."
+            sleep 30
+          done
+          
+          echo "⚠️ Não foi possível confirmar que o serviço está acessível publicamente"
+          echo "📋 Isso pode ser normal se o domínio ainda não estiver configurado"
+          echo "✅ Webhook de deployment foi enviado com sucesso - verificar logs do servidor"
 
   notify:
     runs-on: ubuntu-latest
