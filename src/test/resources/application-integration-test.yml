@@ -1,0 +1,127 @@
+# ===============================================================================
+# CONFIGURAÇÃO DE TESTES DE INTEGRAÇÃO - MICROSERVIÇO AUTENTICAÇÃO
+# ===============================================================================
+spring:
+  application:
+    name: conexao-de-sorte-auth-integration-test
+  
+  # Database será configurado dinamicamente pelo Testcontainers
+  r2dbc:
+    pool:
+      enabled: true
+      initial-size: 2
+      max-size: 5
+      max-idle-time: 30s
+      validation-query: SELECT 1
+      
+  # Redis será configurado dinamicamente pelo Testcontainers
+  data:
+    redis:
+      timeout: 2000ms
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 5
+          max-idle: 5
+          min-idle: 1
+          
+  # Cache para testes de integração
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000 # 5 minutos
+      cache-null-values: false
+      
+  # Flyway desabilitado (tabelas criadas programaticamente)
+  flyway:
+    enabled: false
+    
+# Configurações específicas para testes de integração
+app:
+  jwt:
+    access-token-validity: 300 # 5 minutos
+    refresh-token-validity: 3600 # 1 hora
+    cleanup-interval: 60 # 1 minuto para testes mais rápidos
+    
+  rate-limiting:
+    login:
+      requests-per-minute: 1000 # Muito permissivo para testes
+      burst-capacity: 1500
+    validation:
+      requests-per-minute: 2000
+      burst-capacity: 3000
+      
+  azure:
+    key-vault:
+      enabled: false # Usar fallback keys nos testes
+      
+  security:
+    max-login-attempts: 5
+    account-lockout-duration: PT30M # 30 minutos
+    
+# Configurações do servidor para testes
+server:
+  port: 0 # Porta aleatória
+
+# Logging otimizado para testes de integração
+logging:
+  level:
+    root: WARN
+    br.tec.facilitaservicos.autenticacao: INFO
+    org.springframework.test: INFO
+    org.testcontainers: INFO
+    com.github.dockerjava: WARN
+    io.r2dbc.mysql: WARN
+    org.springframework.data.redis: WARN
+    
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    
+# Actuator para testes de integração
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      
+# Resilience4j configurações para testes
+resilience4j:
+  circuitbreaker:
+    instances:
+      database:
+        failure-rate-threshold: 90
+        minimum-number-of-calls: 3
+        sliding-window-size: 5
+        wait-duration-in-open-state: 1s
+      redis:
+        failure-rate-threshold: 95
+        minimum-number-of-calls: 2
+        sliding-window-size: 4
+      token-validation:
+        failure-rate-threshold: 95
+        minimum-number-of-calls: 2
+        sliding-window-size: 4
+        
+  retry:
+    instances:
+      database:
+        max-attempts: 2
+        wait-duration: 100ms
+        retry-exceptions:
+          - io.r2dbc.spi.R2dbcDataIntegrityViolationException
+          - io.r2dbc.spi.R2dbcTransientResourceException
+          
+  timelimiter:
+    instances:
+      database:
+        timeout-duration: 3s
+      token-validation:
+        timeout-duration: 2s
+        
+# Configurações específicas do Testcontainers
+testcontainers:
+  reuse:
+    enable: true # Reutilizar containers entre execuções para velocidade

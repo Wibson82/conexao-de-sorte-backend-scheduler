@@ -13,9 +13,9 @@ spring:
     allow-bean-definition-overriding: true
     
   r2dbc:
-    url: r2dbc:mysql://localhost:3306/conexao_sorte_auth
-    username: ${DB_USERNAME:conexao_sorte}
-    password: ${DB_PASSWORD:}  # Removed default password for security
+    url: ${conexao-de-sorte-database-r2dbc-url:r2dbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=true&allowPublicKeyRetrieval=true}
+    username: ${conexao-de-sorte-database-username:}
+    password: ${conexao-de-sorte-database-password:}
     pool:
       enabled: true
       initial-size: 5
@@ -26,9 +26,9 @@ spring:
   # Flyway para migrations (usa JDBC)
   flyway:
     enabled: true
-    url: jdbc:mysql://localhost:3306/conexao_sorte_auth
-    user: ${DB_USERNAME:conexao_sorte}
-    password: ${DB_PASSWORD:}  # Removed default password for security
+    url: ${conexao-de-sorte-database-flyway-url:jdbc:mysql://localhost:3306/conexao_sorte_auth}
+    user: ${conexao-de-sorte-database-username:conexao_sorte}
+    password: ${conexao-de-sorte-database-password:}
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-migration: false
@@ -36,10 +36,10 @@ spring:
   # Cache reativo (Redis)
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: ${REDIS_DB:0}  # DB 0 para autenticacao
+      host: ${conexao-de-sorte-redis-host:localhost}
+      port: ${conexao-de-sorte-redis-port:6379}
+      password: ${conexao-de-sorte-redis-password:}
+      database: ${conexao-de-sorte-redis-database:0}
       timeout: 2000ms
       lettuce:
         pool:
@@ -49,20 +49,12 @@ spring:
           min-idle: 2
           max-wait: 3000ms
           
-  # Azure Key Vault with configtree pattern
+  # Azure Key Vault with manual configuration (disabled automatic)
   cloud:
     azure:
       keyvault:
         secret:
-          enabled: true
-          endpoint: ${AZURE_KEYVAULT_URI:}
-          case-sensitive: false
-          secret-keys: conexao-de-sorte-jwt-signing-key,conexao-de-sorte-jwt-verification-key,conexao-de-sorte-jwt-key-id,conexao-de-sorte-jwt-secret
-      credentials:
-        client-id: ${AZURE_CLIENT_ID:}
-        client-secret: ${AZURE_CLIENT_SECRET:}
-      profile:
-        tenant-id: ${AZURE_TENANT_ID:}
+          enabled: false
   
   # Configtree secret management
   config:
@@ -72,14 +64,14 @@ spring:
       - optional:file:./secrets.properties
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${conexao-de-sorte-server-port:8081}
   shutdown: graceful
   
   # SSL/TLS Configuration
   ssl:
-    enabled: ${SSL_ENABLED:false}
-    key-store: ${SSL_KEYSTORE_PATH:}
-    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    enabled: ${conexao-de-sorte-ssl-enabled:false}
+    key-store: ${conexao-de-sorte-ssl-keystore-path:}
+    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
     key-store-type: PKCS12
     
   netty:

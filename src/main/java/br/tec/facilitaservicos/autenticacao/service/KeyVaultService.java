@@ -43,15 +43,43 @@ public class KeyVaultService {
     @Value("${spring.cloud.azure.keyvault.secret.enabled:false}")
     private boolean keyVaultEnabled;
     
-    // Fallback keys para desenvolvimento/testes
+    // Fallback keys para desenvolvimento/testes - Chaves RSA 2048 completas
     private static final String FALLBACK_PRIVATE_KEY = 
-        "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKB" +
-        "xEtfNXKNjwa9oQ4yCOPOFv7eEIAEFk8eHOeXRYl/dKO5S7KK4f0LMrHXUxJqgzJv" +
-        "LbLrVu8JJJGCe5YlR2TRj8aP2VYxvZR8G9P3K0kPwDi6JzrO8QvXLbZkPP7rY/0v";
+        "MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCmaLtzMJwL/dt2" +
+        "vu0VT3d+0kpcPTQ1c/RFUrEes7Edvn28Ad0GXvFLRIw3F24Jt51X06jxaKdj5aPv" +
+        "K73pTVF3ob5S5xfYJ76Y0tsJjd5IV3gXhlZZOq0CIzUGWQzcP15wBOehm/L3Gu6t" +
+        "p0I5aGWylv2gR9Vy++Mk1e3ekhl4PYZQ2rD23ErJCe/cO0J/1NnJiCQzwn/N+c0Q" +
+        "yCIU3Lpgiamq+tn88NFEEiohva5aXgMr6FSHEzU378icqmv1LGzNWWjYPUU6n+LH" +
+        "gXFkStJKh5YCNrqvt7LwewkkjoUc0y5gafAXfyk6VASAhASuW9erUCDHT8MRK+cO" +
+        "8+vDV1LjAgMBAAECggEAPG/pNIrBAfHu1Q++l3DHG35Ql3N7FLbKTqsbvOTSPNVE" +
+        "YRXkKj4tMILy0cdmpYzUTmOHBjZWJQfwJBsk3CjCn8pUj1Ny64Rzypk6CBxIUMnD" +
+        "yfd2QO34i8Axr96DtzIkoFaHscAr2+ciLFuEx8jMtrHz51Rvh1VIR8aSn7U8HtjS" +
+        "7N+xpKCYepS/J/JPn/xpPK8v3PpuOKMqAQeJGBELWFhNUkv/S8dj/LAIIdwcsmWA" +
+        "bZUwb5ImVw6vHxW+QKv64pCPQ6Aq0x1vaISOJHZTlO7M8RhU3Mm/cDZU06LU6QwX" +
+        "3VB3Yyv+zNaxv+DqRBtUzBmi0eIHC8jYz3i3q4HmoQKBgQDioTm6m6oPjUU1KKJ6" +
+        "xuySOYqQklmfk/unVoMDBLyreNw9hredk+w3WU9Kit0GB5qQ4bVrjfbVzyLE8Fdv" +
+        "3NfgcGZH4Pq4reQWQ5iL11ETEYqRgu85pEqAK1/8DS0e/kvJqDKYLnibNUmTZ3Ut" +
+        "e8v16u+oV0FzASUEZghcrhRvqwKBgQC7+ZkE7+XVqxhduXQWXNG5Gy6uEMSVxCRH" +
+        "dFfmINDtI71Hi5ubUXpPkytHKj7TZ2lktHHfOHQuRAcidSPBEKB8dfOEjxFZVxq4" +
+        "bLi0lMdpRf+OpAGNKiivGk/6YJXbnM7Xrf64LMqPu0kjsiSmqH0SWbj/vu1InzQz" +
+        "xg0Edw3RqQKBgAEwh3ULTCE4xJw60l+Cm8tIsgmAOygzRqbiNV3WsIbV45IPGveg" +
+        "xySjO19Qy0g00gLgrGscG6eTpsMR3+OebSOoc2D9NVOy1fen8y0IvEw1U1zgKxFK" +
+        "Y3m4wJA6IXqAKzWrxFg4JjnqVbCIYn0SoUdxLEDd9GH+J4uWXYTfBQxxAoGALJwK" +
+        "bXqFP9Tv3mZBn4D9oIFL7bE7BhPbTD3XEl0dV/nQVKdUEWMftLzHW4cyC7eR8n1E" +
+        "POZH5CbuzoWgK5RHkeHoHcBaLKqYQ8ZBe1GHlXswL+jKGXc02oFTE6dSSSEIkXTQ" +
+        "a2Lt23hl3hvLyOVZcT5rwf3MkByAJf1NX47lb6kCgYBu0727dmIbfVCkHZ6pqkDT" +
+        "4+7HNDf3B0fLwtEo7pbWQkbqXTt4885OF8scuJ2nFHGjC6Mci2/jbNQXhzSwgq6U" +
+        "H4IFygTx/4UbwUmQfElY7gZfDh5gne4LDLhrrJuURFCXUJy5YznD7C/aI/ZAK0gH" +
+        "cfH5WumEGlUaspgGYHb5hw==";
     
     private static final String FALLBACK_PUBLIC_KEY = 
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1L7VLPHCgcRLXzVy" +
-        "jY8GvaEOMgjjzhb+3hCABBZPHhznl0WJf3SjuUuyiuH9CzKx11MSaoMyby2y61bv";
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApmi7czCcC/3bdr7tFU93" +
+        "ftJKXD00NXP0RVKxHrOxHb59vAHdBl7xS0SMNxduCbedV9Oo8WinY+Wj7yu96U1R" +
+        "d6G+UucX2Ce+mNLbCY3eSFd4F4ZWWTqtAiM1BlkM3D9ecATnoZvy9xruradCOWhl" +
+        "spb9oEfVcvvjJNXt3pIZeD2GUNqw9txKyQnv3DtCf9TZyYgkM8J/zfnNEMgiFNy6" +
+        "YImpqvrZ/PDRRBIqIb2uWl4DK+hUhxM1N+/InKpr9SxszVlo2D1FOp/ix4FxZEr" +
+        "SSoeWAja6r7ey8HsJJI6FHNMuYGnwF38pOlQEgIQErlvXq1Agx0/DESvnDvPrw1" +
+        "dS4wIDAQAB";
     
     private static final String FALLBACK_KEY_ID = "fallback-key-id";
     

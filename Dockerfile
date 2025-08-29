@@ -80,12 +80,7 @@ COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 ## JVM otimizada para containers: flags removidas para compatibilidade total com Java 24
 # As flags e perfis devem ser definidos externamente via workflow/deploy
 
-# Variáveis de ambiente da aplicação
-ENV SPRING_PROFILES_ACTIVE=prod
-ENV SPRING_CONFIG_LOCATION=classpath:/application.yml
-ENV SERVER_PORT=8081
-ENV MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus
-ENV LOGGING_LEVEL_ROOT=INFO
+# Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
 
 # Expor porta da aplicação
 EXPOSE 8081
@@ -109,8 +104,8 @@ LABEL org.opencontainers.image.url="https://conexaodesorte.com"
 LABEL org.opencontainers.image.source="https://github.com/conexaodesorte/autenticacao"
 
 # Comando de inicialização com dumb-init para signal handling
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["dumb-init", "--", "java"]
+CMD ["-jar", "app.jar"]
 
 # === ESTÁGIO 3: DEBUG (Opcional) ===
 FROM runtime AS debug

@@ -6,44 +6,44 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * DTO para requisiÁ„o de login.
- * Record imut·vel seguindo padrıes reativos.
+ * DTO para requisi√ß√£o de login.
+ * Record imut√°vel seguindo padr√µes reativos.
  */
-@Schema(description = "Dados para requisiÁ„o de login")
+@Schema(description = "Dados para requisi√ß√£o de login")
 public record RequisicaoLoginDTO(
     
-    @Schema(description = "Nome de usu·rio ou email", example = "usuario@exemplo.com")
-    @NotBlank(message = "Usu·rio È obrigatÛrio")
-    @Size(min = 3, max = 255, message = "Usu·rio deve ter entre 3 e 255 caracteres")
+    @Schema(description = "Nome de usu√°rio ou email", example = "usuario@exemplo.com")
+    @NotBlank(message = "Usu√°rio √© obrigat√≥rio")
+    @Size(min = 3, max = 255, message = "Usu√°rio deve ter entre 3 e 255 caracteres")
     @JsonProperty("username")
     String usuario,
     
-    @Schema(description = "Senha do usu·rio", example = "senha123")
-    @NotBlank(message = "Senha È obrigatÛria")
+    @Schema(description = "Senha do usu√°rio", example = "senha123")
+    @NotBlank(message = "Senha √© obrigat√≥ria")
     @Size(min = 6, max = 100, message = "Senha deve ter entre 6 e 100 caracteres")
     @JsonProperty("password")
     String senha
 ) {
     
     /**
-     * ValidaÁ„o adicional no construtor compacto
+     * Valida√ß√£o adicional no construtor compacto
      */
     public RequisicaoLoginDTO {
         // Trim dos valores de entrada
         usuario = usuario != null ? usuario.trim() : null;
         senha = senha != null ? senha.trim() : null;
         
-        // ValidaÁıes b·sicas adicionais
+        // Valida√ß√µes b√°sicas adicionais
         if (usuario != null && usuario.isBlank()) {
-            throw new IllegalArgumentException("Usu·rio n„o pode estar vazio");
+            throw new IllegalArgumentException("Usu√°rio n√£o pode estar vazio");
         }
         if (senha != null && senha.isBlank()) {
-            throw new IllegalArgumentException("Senha n„o pode estar vazia");
+            throw new IllegalArgumentException("Senha n√£o pode estar vazia");
         }
     }
     
     /**
-     * MÈtodo auxiliar para logs seguros (sem expor a senha)
+     * M√©todo auxiliar para logs seguros (sem expor a senha)
      */
     public String toSecureString() {
         return String.format("RequisicaoLoginDTO{usuario='%s', senha='[PROTEGIDA]'}", usuario);

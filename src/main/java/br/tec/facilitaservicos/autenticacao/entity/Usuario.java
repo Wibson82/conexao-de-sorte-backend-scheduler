@@ -24,6 +24,30 @@ public class Usuario {
     @Column("nome_usuario")
     private String nomeUsuario;
     
+    @Column("primeiro_nome")
+    private String primeiroNome;
+    
+    @Column("sobrenome")
+    private String sobrenome;
+    
+    @Column("ultimo_login")
+    private LocalDateTime ultimoLogin;
+    
+    @Column("roles")
+    private String roles;
+    
+    @Column("permissoes")
+    private String permissoes;
+    
+    @Column("avatar_url")
+    private String avatarUrl;
+    
+    @Column("timezone")
+    private String timezone;
+    
+    @Column("locale")
+    private String locale;
+    
     @Column("senha_hash")
     private String senhaHash;
     
@@ -162,6 +186,89 @@ public class Usuario {
     
     public void setVersao(Long versao) {
         this.versao = versao;
+    }
+    
+    public String getPrimeiroNome() {
+        return primeiroNome;
+    }
+    
+    public void setPrimeiroNome(String primeiroNome) {
+        this.primeiroNome = primeiroNome;
+    }
+    
+    public String getSobrenome() {
+        return sobrenome;
+    }
+    
+    public void setSobrenome(String sobrenome) {
+        this.sobrenome = sobrenome;
+    }
+    
+    public LocalDateTime getUltimoLogin() {
+        return ultimoLogin;
+    }
+    
+    public void setUltimoLogin(LocalDateTime ultimoLogin) {
+        this.ultimoLogin = ultimoLogin;
+    }
+    
+    public String getRoles() {
+        return roles;
+    }
+    
+    public void setRoles(String roles) {
+        this.roles = roles;
+    }
+    
+    public String getPermissoes() {
+        return permissoes;
+    }
+    
+    public void setPermissoes(String permissoes) {
+        this.permissoes = permissoes;
+    }
+    
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+    
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+    
+    public String getTimezone() {
+        return timezone;
+    }
+    
+    public void setTimezone(String timezone) {
+        this.timezone = timezone;
+    }
+    
+    public String getLocale() {
+        return locale;
+    }
+    
+    public void setLocale(String locale) {
+        this.locale = locale;
+    }
+    
+    public LocalDateTime getCriadoEm() {
+        return dataCriacao;
+    }
+    
+    public String getUsername() {
+        return nomeUsuario;
+    }
+    
+    public String getNomeCompleto() {
+        if (primeiroNome != null && sobrenome != null) {
+            return primeiroNome + " " + sobrenome;
+        } else if (primeiroNome != null) {
+            return primeiroNome;
+        } else if (sobrenome != null) {
+            return sobrenome;
+        }
+        return nomeUsuario;
     }
     
     // Métodos de negócio

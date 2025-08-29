@@ -78,6 +78,13 @@ spring:
 ## 🔄 **HISTÓRICO DE MUDANÇAS**
 
 ### **2025-08-27**
+- ✅ .dockerignore versionado para reduzir contexto de build e evitar vazamento de segredos
+- ✅ Defaults de rede Docker: preferir host interno (ex.: `conexao-mysql`) e evitar `localhost` dentro do container
+- ✅ Padronizar segredos via Key Vault + configtree (`/run/secrets`) e aceitar `SPRING_DATASOURCE_*`/`DB_*`
+- ✅ Separar R2DBC (r2dbc://) de Flyway (jdbc://) quando Flyway estiver ativo
+- ✅ Desabilitar Redis quando não provisionado (auto-config e health)
+
+### **2025-08-27**
 - ✅ Redis: Corrigido `max-total` → `max-active`, adicionado `database: 0`
 - ✅ Verificação segurança: Sem problemas encontrados
 - ✅ Versões: Spring Boot 3.5.5, Java 24 mantidos

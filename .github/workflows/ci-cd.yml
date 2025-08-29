@@ -1,9 +1,8 @@
-name: 🔐 Autenticação Microservice - CI/CD Pipeline
+name: 🔐 Autenticacao Microservice - CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
-    paths: ['src/**', 'pom.xml', 'Dockerfile', '.github/workflows/**']
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -42,9 +41,9 @@ jobs:
           chmod +x ./mvnw
           ./mvnw --version
       - name: Run unit tests
-        run: ./mvnw clean test -Dspring.profiles.active=test
+        run: ./mvnw clean test -Dspring.profiles.active=azure
       - name: Build application
-        run: ./mvnw clean package -DskipTests -Dspring.profiles.active=production
+        run: ./mvnw clean package -DskipTests -Dspring.profiles.active=azure
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -93,14 +92,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.image_name.outputs.image_name_lower }}
           tags: |
-            type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{branch}}-{{date 'YYYYMMDD-HHmmss'}}
-            type=raw,value=prod-latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value={{date 'YYYY-MM-DD-HHmmss'}}-{{sha}},enable={{is_default_branch}}
           labels: |
-            org.opencontainers.image.title=Autenticação Microservice
+            org.opencontainers.image.title=Autenticacao Microservice
             org.opencontainers.image.description=Authentication and JWT management microservice
             org.opencontainers.image.service=${{ env.SERVICE_NAME }}
 
@@ -192,11 +188,12 @@ jobs:
             --predicate=/dev/null \
             "${{ steps.ref.outputs.lower }}" || echo "SBOM attestation optional - continuing"
 
+
   deploy-production:
     needs: [build-image, sign-image]
     runs-on: [self-hosted, hostinger-runner]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (self-hosted, OIDC)
+    name: 🌟 Deploy to Production (self-hosted)
     permissions:
       id-token: write
       contents: read
@@ -211,31 +208,86 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resolver Key Vault + carregar segredos
+      - name: Load Azure Key Vault secrets
         run: |
           set -euo pipefail
-          VAULT="${{ secrets.AZURE_KEYVAULT_NAME }}"
-          if [ -z "$VAULT" ]; then
-            VAULT="$(echo "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" | sed 's#https://##; s#\.vault\.azure\.net/?##')"
+          # Extract vault name from AZURE_KEYVAULT_ENDPOINT
+          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
+          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
+            VAULT="${BASH_REMATCH[1]}"
+          else
+            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+            echo "Expected format: https://vault-name.vault.azure.net/" >&2
+            exit 1
           fi
+          
+          echo "Loading secrets from Azure Key Vault: $VAULT (endpoint: $VAULT_ENDPOINT)" >&2
           echo "VAULT=$VAULT" >> "$GITHUB_ENV"
 
-          get() { az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv; }
+          get() { 
+            echo "Fetching secret: $1" >&2
+            SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
+            if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
+              echo "ERROR: Secret $1 not found in Azure Key Vault $VAULT" >&2
+              echo "Available secrets in vault:" >&2
+              az keyvault secret list --vault-name "$VAULT" --query '[].name' -o tsv >&2
+              exit 1
+            fi
+            echo "$SECRET_VALUE"
+          }
 
-          echo "SPRING_DATASOURCE_URL=$(get conexao-de-sorte-database-url)" >> $GITHUB_ENV
-          echo "SPRING_DATASOURCE_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
-          echo "SPRING_DATASOURCE_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
-          echo "CONEXAO_JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
-          echo "CONEXAO_JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
+          # Database secrets (R2DBC + JDBC para Flyway)
+          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
+          echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          echo "DB_FLYWAY_URL=$(get conexao-de-sorte-database-flyway-url)" >> $GITHUB_ENV
+          
+          # Redis secrets
+          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
+          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=$(get conexao-de-sorte-redis-database)" >> $GITHUB_ENV
+          
+          # JWT secrets (específicos para autenticação)
+          echo "JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
+          echo "JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
+          echo "JWT_SIGNING_KEY=$(get conexao-de-sorte-jwt-signing-key)" >> $GITHUB_ENV
+          echo "JWT_VERIFICATION_KEY=$(get conexao-de-sorte-jwt-verification-key)" >> $GITHUB_ENV
+          echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
+          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          
+          # Encryption secrets
+          echo "ENCRYPTION_MASTER_KEY=$(get conexao-de-sorte-encryption-master-key)" >> $GITHUB_ENV
+          echo "ENCRYPTION_MASTER_PASSWORD=$(get conexao-de-sorte-encryption-master-password)" >> $GITHUB_ENV
+          echo "ENCRYPTION_BACKUP_KEY=$(get conexao-de-sorte-encryption-backup-key)" >> $GITHUB_ENV
+          
+          # SSL/TLS secrets
+          echo "SSL_ENABLED=$(get conexao-de-sorte-ssl-enabled)" >> $GITHUB_ENV
+          echo "SSL_KEYSTORE_PATH=$(get conexao-de-sorte-ssl-keystore-path)" >> $GITHUB_ENV
+          echo "SSL_KEYSTORE_PASSWORD=$(get conexao-de-sorte-ssl-keystore-password)" >> $GITHUB_ENV
+          
+          # CORS configuration
+          echo "CORS_ALLOWED_ORIGINS=$(get conexao-de-sorte-cors-allowed-origins)" >> $GITHUB_ENV
+          echo "CORS_ALLOW_CREDENTIALS=$(get conexao-de-sorte-cors-allow-credentials)" >> $GITHUB_ENV
+          
+          # OAuth2 secrets (para autenticação)
+          echo "OAUTH2_CLIENT_ID=$(get conexao-de-sorte-oauth2-client-id)" >> $GITHUB_ENV
+          echo "OAUTH2_CLIENT_SECRET=$(get conexao-de-sorte-oauth2-client-secret)" >> $GITHUB_ENV
+          
+          # Azure Client Secret (para solução híbrida)
+          echo "AZURE_CLIENT_SECRET_VALUE=$(get conexao-de-sorte-azure-client-secret)" >> $GITHUB_ENV
 
+          # Create secure secrets directory
           SECRETS_DIR=$(mktemp -d -p /tmp conexao_secrets_XXXX)
           umask 077
-          printf '%s' "$(get conexao-de-sorte-jwt-privateKey)" > "$SECRETS_DIR/jwt_private.pem"
-          printf '%s' "$(get conexao-de-sorte-jwt-publicKey)"  > "$SECRETS_DIR/jwt_public.pem"
+          printf '%s' "$(get conexao-de-sorte-jwt-privatekey)" > "$SECRETS_DIR/jwt_private.pem"
+          printf '%s' "$(get conexao-de-sorte-jwt-publickey)" > "$SECRETS_DIR/jwt_public.pem"
           printf '%s' "$(get conexao-de-sorte-encryption-master-key)" > "$SECRETS_DIR/encryption_master_key"
           printf '%s' "$(get conexao-de-sorte-encryption-master-password)" > "$SECRETS_DIR/encryption_master_password"
+          printf '%s' "$(get conexao-de-sorte-encryption-backup-key)" > "$SECRETS_DIR/encryption_backup_key"
           chmod 600 "$SECRETS_DIR"/*
           echo "SECRETS_DIR=$SECRETS_DIR" >> $GITHUB_ENV
+          echo "Success: Azure Key Vault secrets loaded successfully" >&2
 
       - name: Login GHCR
         uses: docker/login-action@v3
@@ -284,20 +336,43 @@ jobs:
             --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=60s \
             -v "${SECRETS_DIR}":/run/secrets:ro \
             -v $HOME/conexao-logs/autenticacao:/app/logs \
-            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
             -e SPRING_PROFILES_ACTIVE=prod,azure \
             -e ENVIRONMENT=production \
             -e SERVER_PORT=8081 \
             -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
             -e TZ=${{ env.TZ }} \
-            -e SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}" \
-            -e SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME}" \
-            -e SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD}" \
-            -e JWT_SECRET="${CONEXAO_JWT_SECRET}" \
-            -e JWT_PRIVATE_PATH="/run/secrets/jwt_private.pem" \
-            -e JWT_PUBLIC_PATH="/run/secrets/jwt_public.pem" \
-            -e ENC_MASTER_KEY_PATH="/run/secrets/encryption_master_key" \
-            -e ENC_MASTER_PASSWORD_PATH="/run/secrets/encryption_master_password" \
+            -e AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            -e AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            -e AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET_VALUE}" \
+            -e AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT}}" \
+            -e AZURE_KEYVAULT_ENABLED=true \
+            -e conexao_de_sorte_database_r2dbc_url="${DB_R2DBC_URL}" \
+            -e conexao_de_sorte_database_username="${DB_USERNAME}" \
+            -e conexao_de_sorte_database_password="${DB_PASSWORD}" \
+            -e conexao_de_sorte_database_flyway_url="${DB_FLYWAY_URL}" \
+            -e conexao_de_sorte_redis_host="${REDIS_HOST}" \
+            -e conexao_de_sorte_redis_port="${REDIS_PORT}" \
+            -e conexao_de_sorte_redis_password="${REDIS_PASSWORD}" \
+            -e conexao_de_sorte_redis_database="${REDIS_DATABASE}" \
+            -e conexao_de_sorte_jwt_secret="${JWT_SECRET}" \
+            -e conexao_de_sorte_jwt_key_id="${JWT_KEY_ID}" \
+            -e conexao_de_sorte_jwt_signing_key="${JWT_SIGNING_KEY}" \
+            -e conexao_de_sorte_jwt_verification_key="${JWT_VERIFICATION_KEY}" \
+            -e conexao_de_sorte_jwt_issuer="${JWT_ISSUER}" \
+            -e conexao_de_sorte_jwt_jwks_uri="${JWT_JWKS_URI}" \
+            -e conexao_de_sorte_jwt_publickey="/run/secrets/jwt_public.pem" \
+            -e conexao_de_sorte_jwt_privatekey="/run/secrets/jwt_private.pem" \
+            -e conexao_de_sorte_encryption_master_key="/run/secrets/encryption_master_key" \
+            -e conexao_de_sorte_encryption_master_password="/run/secrets/encryption_master_password" \
+            -e conexao_de_sorte_encryption_backup_key="/run/secrets/encryption_backup_key" \
+            -e conexao_de_sorte_ssl_enabled="${SSL_ENABLED}" \
+            -e conexao_de_sorte_ssl_keystore_path="${SSL_KEYSTORE_PATH}" \
+            -e conexao_de_sorte_ssl_keystore_password="${SSL_KEYSTORE_PASSWORD}" \
+            -e conexao_de_sorte_cors_allowed_origins="${CORS_ALLOWED_ORIGINS}" \
+            -e conexao_de_sorte_cors_allow_credentials="${CORS_ALLOW_CREDENTIALS}" \
+            -e conexao_de_sorte_oauth2_client_id="${OAUTH2_CLIENT_ID}" \
+            -e conexao_de_sorte_oauth2_client_secret="${OAUTH2_CLIENT_SECRET}" \
             --label "traefik.enable=true" \
             --label "traefik.docker.network=conexao-network" \
             --label "traefik.http.routers.autenticacao.rule=Host(\`auth.conexaodesorte.com.br\`)" \
@@ -361,8 +436,8 @@ jobs:
               "attachments": [{
                 "color": "${{ job.status }}" == "success" ? "good" : "${{ job.status }}" == "failure" ? "danger" : "warning",
                 "fields": [{
-                  "title": "🔐 Autenticação Microservice",
-                  "value": "Status: ${{ job.status }}\\nBranch: ${{ github.ref_name }}\\nCommit: ${{ github.sha }}",
+                  "title": "🔐 Autenticacao Microservice",
+                  "value": "Status: ${{ job.status }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}",
                   "short": true
                 }]
               }]

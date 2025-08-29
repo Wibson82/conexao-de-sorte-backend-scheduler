@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -259,10 +260,10 @@ public class AuthController {
             .then(Mono.fromCallable(() -> {
                 logger.info("✅ Token revogado com sucesso: ip={}", clientIp);
                 
-                return ResponseEntity.ok(Map.of(
-                    "revoked", true,
-                    "message", "Token revogado com sucesso"
-                ));
+                Map<String, Object> response = new HashMap<>();
+                response.put("revoked", true);
+                response.put("message", "Token revogado com sucesso");
+                return ResponseEntity.ok(response);
             }))
             .onErrorResume(throwable -> {
                 logger.warn("⚠️ Erro na revogação: ip={}, erro={}", 
@@ -288,16 +289,20 @@ public class AuthController {
         logger.debug("✅ Health check solicitado");
         
         return authService.healthCheck()
-            .map(isHealthy -> ResponseEntity.ok(Map.of(
-                "status", isHealthy ? "UP" : "DOWN",
-                "service", "authentication",
-                "timestamp", System.currentTimeMillis()
-            )))
-            .onErrorReturn(ResponseEntity.status(503).body(Map.of(
-                "status", "DOWN",
-                "service", "authentication",
-                "timestamp", System.currentTimeMillis()
-            )));
+            .map(isHealthy -> {
+                Map<String, Object> response = new HashMap<>();
+                response.put("status", isHealthy ? "UP" : "DOWN");
+                response.put("service", "authentication");
+                response.put("timestamp", System.currentTimeMillis());
+                return ResponseEntity.ok(response);
+            })
+            .onErrorResume(throwable -> {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("status", "DOWN");
+                errorResponse.put("service", "authentication");
+                errorResponse.put("timestamp", System.currentTimeMillis());
+                return Mono.just(ResponseEntity.status(503).body(errorResponse));
+            });
     }
     
     // Métodos auxiliares privados

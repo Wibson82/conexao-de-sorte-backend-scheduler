@@ -1,0 +1,96 @@
+# ===============================================================================
+# CONFIGURAÇÃO DE TESTE - MICROSERVIÇO AUTENTICAÇÃO
+# ===============================================================================
+spring:
+  application:
+    name: conexao-de-sorte-auth-test
+  
+  # Banco de dados em memória para testes
+  r2dbc:
+    url: r2dbc:h2:mem:///testdb
+    username: sa
+    password: ""
+    pool:
+      enabled: false
+      
+  # Flyway desabilitado para testes
+  flyway:
+    enabled: false
+    
+  # Redis embedded para testes
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 15 # Database separado para testes
+      
+  # Configuração de cache para testes
+  cache:
+    type: simple
+    
+# Configurações específicas para teste
+app:
+  jwt:
+    access-token-validity: 300 # 5 minutos para testes
+    refresh-token-validity: 3600 # 1 hora para testes
+    cleanup-interval: 60 # 1 minuto para testes
+    
+  rate-limiting:
+    login:
+      requests-per-minute: 100 # Mais permissivo para testes
+      burst-capacity: 150
+    validation:
+      requests-per-minute: 1000
+      burst-capacity: 1500
+      
+  azure:
+    key-vault:
+      enabled: false # Usar fallback keys nos testes
+      
+# Configurações do servidor para testes
+server:
+  port: 0 # Porta aleatória para testes
+
+# Logging para testes
+logging:
+  level:
+    root: WARN
+    br.tec.facilitaservicos.autenticacao: DEBUG
+    org.springframework.test: DEBUG
+    org.testcontainers: INFO
+    com.github.dockerjava: WARN
+    
+# Actuator simplificado para testes  
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+        
+# Resilience4j para testes (mais permissivo)
+resilience4j:
+  circuitbreaker:
+    instances:
+      database:
+        failure-rate-threshold: 80
+        minimum-number-of-calls: 2
+        sliding-window-size: 4
+      redis:
+        failure-rate-threshold: 90
+        minimum-number-of-calls: 2
+      token-validation:
+        failure-rate-threshold: 90
+        minimum-number-of-calls: 2
+        
+  retry:
+    instances:
+      database:
+        max-attempts: 2
+        wait-duration: 100ms
+        
+  timelimiter:
+    instances:
+      database:
+        timeout-duration: 2s
+      token-validation:
+        timeout-duration: 1s

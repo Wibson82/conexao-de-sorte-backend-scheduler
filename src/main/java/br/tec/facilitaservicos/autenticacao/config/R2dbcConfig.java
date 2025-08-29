@@ -1,7 +1,7 @@
 package br.tec.facilitaservicos.autenticacao.config;
 
-import io.r2dbc.mysql.MySqlConnectionConfiguration;
-import io.r2dbc.mysql.MySqlConnectionFactory;
+import io.asyncer.r2dbc.mysql.MySqlConnectionConfiguration;
+import io.asyncer.r2dbc.mysql.MySqlConnectionFactory;
 import io.r2dbc.pool.ConnectionPool;
 import io.r2dbc.pool.ConnectionPoolConfiguration;
 import io.r2dbc.spi.ConnectionFactory;
@@ -59,7 +59,7 @@ public class R2dbcConfig extends AbstractR2dbcConfiguration {
             .password(password)
             .database(database)
             .connectTimeout(Duration.ofSeconds(10))
-            .sslMode(io.r2dbc.mysql.MySqlSslMode.DISABLED) // Para desenvolvimento
+            // SSL desabilitado para desenvolvimento
             .autodetectExtensions(false)
             .build();
         

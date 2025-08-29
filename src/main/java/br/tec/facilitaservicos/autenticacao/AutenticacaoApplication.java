@@ -7,32 +7,36 @@ import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories;
 
 /**
  * ============================================================================
- * = APLICA«√O PRINCIPAL - MICROSERVI«O AUTENTICA«√O
+ * = APLICA√á√ÉO PRINCIPAL - MICROSERVI√áO AUTENTICA√á√ÉO
  * ============================================================================
  * 
- * MicroserviÁo de autenticaÁ„o 100% reativo usando:
+ * Microservi√ßo de autentica√ß√£o 100% reativo usando:
  * - Spring Boot 3.5+
  * - WebFlux (reativo)
  * - R2DBC (reativo)
  * - Spring Security reativo
  * - JWT com JWKS
- * - Azure Key Vault para rotaÁ„o de chaves
+ * - Azure Key Vault para rota√ß√£o de chaves
  * - Observabilidade com Micrometer
  * - Resilience4j para rate limiting
  * 
- * Endpoints:
- * - POST /auth/token - GeraÁ„o de token
- * - POST /auth/refresh - RenovaÁ„o de token
- * - POST /auth/introspect - IntrospecÁ„o de token
- * - GET /oauth2/jwks - JWK Set p˙blico
+ * CARACTER√çSTICAS T√âCNICAS:
+ * - Implementa√ß√£o 100% non-blocking
+ * - Autentica√ß√£o baseada em JWT com chaves RSA
+ * - Integra√ß√£o com Azure Key Vault para gest√£o de chaves
+ * - Rate limiting granular por endpoint
+ * - Observabilidade completa (m√©tricas, tracing, logs)
+ * - Configura√ß√£o externalizada para m√∫ltiplos ambientes
  * 
- * ============================================================================
+ * @author Sistema Conex√£o de Sorte
+ * @version 1.0.0
+ * @since 2024
  */
 @SpringBootApplication
 @EnableR2dbcRepositories
 @EnableR2dbcAuditing
 public class AutenticacaoApplication {
-    
+
     public static void main(String[] args) {
         SpringApplication.run(AutenticacaoApplication.class, args);
     }

@@ -1,0 +1,47 @@
+# VCS e CI
+.git
+.gitignore
+.github/
+
+# Sistemas operacionais / IDEs
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Build artifacts
+target/
+build/
+.gradle/
+
+# Dependências locais (proteção geral)
+node_modules/
+
+# Arquivos temporários
+tmp/
+temp/
+*.swp
+*.bak
+
+# Segredos e chaves (nunca enviar para o contexto de build)
+*.key
+*.pem
+*.p12
+*.jks
+secrets/
+chaves/
+.env
+.env.*
+
+# Documentação e backups
+docs/
+**/README*.md
+
+# Manter apenas o necessário para o build
+!pom.xml
+!.mvn/
+!mvnw
+!src/

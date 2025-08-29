@@ -16,7 +16,7 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Autenticacao Microservice</name>
-    <description>Microservi�o de autentica��o reativo com Spring WebFlux e R2DBC</description>
+    <description>Microserviço de autenticação reativo com Spring WebFlux e R2DBC</description>
 
     <properties>
         <java.version>24</java.version>
@@ -139,9 +139,17 @@
             <groupId>com.azure</groupId>
             <artifactId>azure-security-keyvault-keys</artifactId>
         </dependency>
+        <!-- Azure Key Vault Integration - Solução Híbrida OIDC -->
+        <!-- Versões validadas via Maven Central Repository -->
         <dependency>
-            <groupId>com.azure.spring</groupId>
-            <artifactId>spring-cloud-azure-starter-keyvault-secrets</artifactId>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.10.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.17.0</version>
         </dependency>
 
         <!-- Resiliência -->
@@ -208,12 +216,7 @@
             <version>${springdoc.version}</version>
         </dependency>
 
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
-        </dependency>
+        <!-- Lombok removido conforme requisitos - implementação manual de builders -->
 
         <!-- Jakarta Validation -->
         <dependency>
@@ -267,12 +270,7 @@
                     <layers>
                         <enabled>true</enabled>
                     </layers>
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
+                    <!-- Lombok removido - sem exclusões necessárias -->
                 </configuration>
             </plugin>
 

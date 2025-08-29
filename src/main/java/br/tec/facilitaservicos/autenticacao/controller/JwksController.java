@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -148,7 +149,7 @@ public class JwksController {
         description = "Retorna informações sobre a chave de assinatura atual (sem dados sensíveis)"
     )
     @ApiResponse(responseCode = "200", description = "Informações da chave retornadas com sucesso")
-    public Mono<ResponseEntity<Map<String, Object>>> getKeyInfo() {
+    public Mono<ResponseEntity<? extends Map<String, ?>>> getKeyInfo() {
         logger.debug("📊 Solicitação de informações da chave");
         
         return jwtService.generateJwkSet()
@@ -160,14 +161,13 @@ public class JwksController {
                 if (keys != null && !keys.isEmpty()) {
                     Map<String, Object> key = keys.get(0);
                     
-                    Map<String, Object> keyInfo = Map.of(
-                        "key_id", key.getOrDefault("kid", "unknown"),
-                        "algorithm", key.getOrDefault("alg", "RS256"),
-                        "key_type", key.getOrDefault("kty", "RSA"),
-                        "key_use", key.getOrDefault("use", "sig"),
-                        "issued_at", System.currentTimeMillis() / 1000,
-                        "cache_ttl_seconds", 3600
-                    );
+                    Map<String, Object> keyInfo = new HashMap<>();
+                    keyInfo.put("key_id", key.getOrDefault("kid", "unknown"));
+                    keyInfo.put("algorithm", key.getOrDefault("alg", "RS256"));
+                    keyInfo.put("key_type", key.getOrDefault("kty", "RSA"));
+                    keyInfo.put("key_use", key.getOrDefault("use", "sig"));
+                    keyInfo.put("issued_at", System.currentTimeMillis() / 1000);
+                    keyInfo.put("cache_ttl_seconds", 3600);
                     
                     logger.debug("📊 Informações da chave geradas: kid={}", key.get("kid"));
                     
@@ -177,15 +177,17 @@ public class JwksController {
                 }
                 
                 return ResponseEntity.ok()
-                    .body(Map.of("error", "no_key_available"));
+                    .body(java.util.Collections.singletonMap("error", "no_key_available"));
             })
             .doOnError(error -> 
                 logger.error("❌ Erro ao obter informações da chave: {}", error.getMessage())
             )
-            .onErrorReturn(
-                ResponseEntity.status(500)
-                    .body(Map.of("error", "internal_server_error"))
-            );
+            .onErrorResume(throwable -> {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("error", "internal_server_error");
+                ResponseEntity<Map<String, Object>> response = ResponseEntity.status(500).body(errorResponse);
+                return Mono.just(response);
+            });
     }
     
     /**
