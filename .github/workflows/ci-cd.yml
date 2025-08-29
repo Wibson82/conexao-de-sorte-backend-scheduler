@@ -191,9 +191,9 @@ jobs:
 
   deploy-production:
     needs: [build-image, sign-image]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hostinger-runner]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (GitHub Secrets + Webhook)
+    name: 🌟 Deploy to Production (OIDC + Self-hosted)
     permissions:
       id-token: write
       contents: read
@@ -201,174 +201,189 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 🔐 Login to Azure (OIDC)
-        uses: azure/login@v1
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: 📊 Configurar secrets do Azure Key Vault
+      - name: Load Azure Key Vault secrets
         run: |
           set -euo pipefail
-          echo "🔍 Configurando secrets do Azure Key Vault..."
-          
-          # Extrair nome do vault
-          VAULT_NAME=$(echo "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" | sed 's|https://||' | sed 's|\.vault\.azure\.net/||')
-          echo "🏪 Vault: $VAULT_NAME"
-          
-          # Buscar e configurar secrets do Azure Key Vault
-          echo "🔑 Configurando database secrets..."
-          DB_PASSWORD=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-password" --query "value" -o tsv)
-          DB_R2DBC_URL=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-r2dbc-url" --query "value" -o tsv)
-          DB_USERNAME=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-username" --query "value" -o tsv)
-          DB_FLYWAY_URL=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-database-jdbc-url" --query "value" -o tsv)
-          
-          echo "🔑 Configurando JWT secrets..."
-          JWT_SECRET=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-secret" --query "value" -o tsv)
-          JWT_SIGNING_KEY=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-signing-key" --query "value" -o tsv)
-          JWT_VERIFICATION_KEY=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-verification-key" --query "value" -o tsv)
-          JWT_KEY_ID=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-jwt-key-id" --query "value" -o tsv)
-          
-          echo "🔑 Configurando Redis secrets..."
-          REDIS_PASSWORD=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-password" --query "value" -o tsv)
-          REDIS_HOST=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-host" --query "value" -o tsv)
-          REDIS_PORT=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-port" --query "value" -o tsv)
-          REDIS_DATABASE=$(az keyvault secret show --vault-name "$VAULT_NAME" --name "conexao-de-sorte-redis-database" --query "value" -o tsv)
-          
-          # Configurar variáveis de ambiente
-          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
-          echo "DB_R2DBC_URL=${DB_R2DBC_URL}" >> $GITHUB_ENV
-          echo "DB_USERNAME=${DB_USERNAME}" >> $GITHUB_ENV  
-          echo "DB_FLYWAY_URL=${DB_FLYWAY_URL}" >> $GITHUB_ENV
-          echo "JWT_SECRET=${JWT_SECRET}" >> $GITHUB_ENV
-          echo "JWT_SIGNING_KEY=${JWT_SIGNING_KEY}" >> $GITHUB_ENV
-          echo "JWT_VERIFICATION_KEY=${JWT_VERIFICATION_KEY}" >> $GITHUB_ENV
-          echo "JWT_KEY_ID=${JWT_KEY_ID}" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> $GITHUB_ENV
-          echo "REDIS_HOST=${REDIS_HOST}" >> $GITHUB_ENV
-          echo "REDIS_PORT=${REDIS_PORT}" >> $GITHUB_ENV
-          echo "REDIS_DATABASE=${REDIS_DATABASE}" >> $GITHUB_ENV
-          
-          # Webhook config usando GitHub como fallback
-          WEBHOOK_URL="https://api.github.com/repos/${{ github.repository }}/dispatches"
-          echo "WEBHOOK_ENDPOINT=${WEBHOOK_URL}" >> $GITHUB_ENV
-          echo "WEBHOOK_SECRET=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-          
-          echo "✅ Azure Key Vault secrets configured successfully"
-
-      - name: 📊 Prepare deployment payload
-        run: |
-          set -euo pipefail
-          echo "🔍 Preparing deployment payload..."
-          
-          IMAGE_DIGEST="${{ needs.build-image.outputs.image-digest }}"
-          IMAGE_NAME_LOWER="${{ needs.build-image.outputs.image-name-lower }}"
-          FULL_IMAGE="ghcr.io/${IMAGE_NAME_LOWER}@${IMAGE_DIGEST}"
-          
-          # Create deployment payload
-          DEPLOYMENT_PAYLOAD=$(cat <<EOF
-          {
-            "service": "auth-microservice",
-            "image": "${FULL_IMAGE}",
-            "port": "8081",
-            "environment": "production",
-            "environment_variables": {
-              "DB_R2DBC_URL": "${DB_R2DBC_URL}",
-              "DB_USERNAME": "${DB_USERNAME}",
-              "DB_PASSWORD": "${DB_PASSWORD}",
-              "DB_FLYWAY_URL": "${DB_FLYWAY_URL}",
-              "REDIS_HOST": "${REDIS_HOST}",
-              "REDIS_PORT": "${REDIS_PORT}",
-              "REDIS_PASSWORD": "${REDIS_PASSWORD}",
-              "REDIS_DATABASE": "${REDIS_DATABASE}",
-              "JWT_SECRET": "${JWT_SECRET}",
-              "JWT_SIGNING_KEY": "${JWT_SIGNING_KEY}",
-              "JWT_VERIFICATION_KEY": "${JWT_VERIFICATION_KEY}",
-              "JWT_KEY_ID": "${JWT_KEY_ID}",
-              "SPRING_PROFILES_ACTIVE": "azure"
-            },
-            "labels": {
-              "traefik.enable": "true",
-              "traefik.docker.network": "conexao-network",
-              "traefik.http.routers.auth-microservice.rule": "Host(\`auth.conexaodesorte.com.br\`)",
-              "traefik.http.routers.auth-microservice.entrypoints": "websecure",
-              "traefik.http.routers.auth-microservice.tls.certresolver": "letsencrypt",
-              "traefik.http.services.auth-microservice.loadbalancer.server.port": "8081"
-            }
-          }
-          EOF
-          )
-          
-          echo "DEPLOYMENT_PAYLOAD<<EOF" >> $GITHUB_ENV
-          echo "$DEPLOYMENT_PAYLOAD" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          echo "✅ Deployment payload prepared"
-
-      - name: 🚀 Deploy via webhook (Azure auth - sem SSH)
-        run: |
-          set -euo pipefail
-          echo "🚀 Deploying auth-microservice via OIDC webhook..."
-          
-          # Generate webhook signature for authentication
-          WEBHOOK_SIGNATURE=$(echo -n "$DEPLOYMENT_PAYLOAD" | openssl dgst -sha256 -hmac "${WEBHOOK_SECRET}" -binary | base64)
-          
-          echo "🔍 Sending deployment request..."
-          echo "   - Webhook endpoint: ${WEBHOOK_ENDPOINT}"
-          echo "   - Service: auth-microservice"
-          echo "   - Image: ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
-          
-          # Send webhook deployment request
-          RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-Webhook-Signature: sha256=${WEBHOOK_SIGNATURE}" \
-            -H "X-GitHub-Event: deployment" \
-            -H "X-GitHub-Delivery: ${{ github.run_id }}" \
-            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
-            --data "$DEPLOYMENT_PAYLOAD" \
-            "${WEBHOOK_ENDPOINT}")
-          
-          HTTP_CODE=$(echo $RESPONSE | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-          RESPONSE_BODY=$(echo $RESPONSE | sed -e 's/HTTPSTATUS:.*//g')
-          
-          echo "📊 Response status: ${HTTP_CODE}"
-          echo "📋 Response body: ${RESPONSE_BODY}"
-          
-          if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
-            echo "✅ Deployment webhook sent successfully!"
+          # Extract vault name from AZURE_KEYVAULT_ENDPOINT
+          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
+          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
+            VAULT="${BASH_REMATCH[1]}"
           else
-            echo "❌ Deployment webhook failed with HTTP ${HTTP_CODE}"
-            echo "Response: ${RESPONSE_BODY}"
+            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+            echo "Expected format: https://vault-name.vault.azure.net/" >&2
             exit 1
           fi
-
-      - name: ✅ Verificar status do deployment
-        run: |
-          echo "🔍 Aguardando deployment do microsserviço de autenticação..."
-          echo "⏳ Esperando 60 segundos para o serviço inicializar..."
-          sleep 60
           
-          # Test if the service is accessible via public endpoint
-          echo "🔍 Testando endpoint público do auth-microservice..."
+          echo "Loading secrets from Azure Key Vault: $VAULT (endpoint: $VAULT_ENDPOINT)" >&2
+          echo "VAULT=$VAULT" >> "$GITHUB_ENV"
+          get() { 
+            echo "Fetching secret: $1" >&2
+            SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
+            if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
+              echo "ERROR: Secret $1 not found in Azure Key Vault $VAULT" >&2
+              echo "Available secrets in vault:" >&2
+              az keyvault secret list --vault-name "$VAULT" --query '[].name' -o tsv >&2
+              exit 1
+            fi
+            echo "$SECRET_VALUE"
+          }
+          
+          # Database secrets
+          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
+          echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          echo "DB_JDBC_URL=$(get conexao-de-sorte-database-jdbc-url)" >> $GITHUB_ENV
+          
+          # Redis secrets
+          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
+          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=$(get conexao-de-sorte-redis-database)" >> $GITHUB_ENV
+          
+          # JWT secrets
+          echo "JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
+          echo "JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
+          echo "JWT_SIGNING_KEY=$(get conexao-de-sorte-jwt-signing-key)" >> $GITHUB_ENV
+          echo "JWT_VERIFICATION_KEY=$(get conexao-de-sorte-jwt-verification-key)" >> $GITHUB_ENV
+          echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
+          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          
+          # Encryption secrets
+          echo "ENCRYPTION_MASTER_KEY=$(get conexao-de-sorte-encryption-master-key)" >> $GITHUB_ENV
+          
+          # Create secure secrets directory
+          SECRETS_DIR=$(mktemp -d -p /tmp conexao_auth_secrets_XXXX)
+          umask 077
+          printf '%s' "$(get conexao-de-sorte-jwt-privatekey)" > "$SECRETS_DIR/jwt_private.pem"
+          printf '%s' "$(get conexao-de-sorte-jwt-publickey)" > "$SECRETS_DIR/jwt_public.pem"
+          printf '%s' "$(get conexao-de-sorte-encryption-master-key)" > "$SECRETS_DIR/encryption_master_key"
+          chmod 600 "$SECRETS_DIR"/*
+          echo "SECRETS_DIR=$SECRETS_DIR" >> $GITHUB_ENV
+          
+          echo "Success: Azure Key Vault secrets loaded successfully" >&2
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Garantir rede Docker
+        run: docker network inspect conexao-network >/dev/null 2>&1 || docker network create conexao-network
+
+      - name: Pull & Run (production)
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
+          
+          echo "🚀 Deploying image: $IMAGE"
+          
+          # Create backup of current running container if exists
+          if docker ps -q -f name=auth-microservice | grep -q .; then
+            echo "📦 Creating backup of current container..."
+            docker tag auth-microservice auth-microservice:backup-$(date +%Y%m%d-%H%M%S) || true
+          fi
+          
+          # Pull new image
+          echo "📥 Pulling new image..."
+          docker pull "$IMAGE"
+          
+          # Stop and remove current container
+          echo "🛑 Stopping current container..."
+          docker stop auth-microservice || true
+          docker rm auth-microservice || true
+          
+          # Create logs directory (use home directory to avoid permission issues)
+          echo "📁 Creating logs directory..."
+          mkdir -p $HOME/conexao-logs/auth
+          
+          # Run new container
+          echo "▶️ Starting new container..."
+          docker run -d \
+            --name auth-microservice \
+            --network conexao-network \
+            --restart unless-stopped \
+            -p 8081:8081 \
+            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
+            --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=60s \
+            -v "${SECRETS_DIR}":/run/secrets:ro \
+            -v $HOME/conexao-logs/auth:/app/logs \
+            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -e SPRING_PROFILES_ACTIVE=prod,azure \
+            -e ENVIRONMENT=production \
+            -e SERVER_PORT=8081 \
+            -e SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ \
+            -e TZ=${{ env.TZ }} \
+            -e AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            -e AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            -e AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT}}" \
+            -e AZURE_KEYVAULT_ENABLED=true \
+            -e conexao_de_sorte_database_r2dbc_url="${DB_R2DBC_URL}" \
+            -e conexao_de_sorte_database_username="${DB_USERNAME}" \
+            -e conexao_de_sorte_database_password="${DB_PASSWORD}" \
+            -e conexao_de_sorte_database_jdbc_url="${DB_JDBC_URL}" \
+            -e conexao_de_sorte_redis_host="${REDIS_HOST}" \
+            -e conexao_de_sorte_redis_port="${REDIS_PORT}" \
+            -e conexao_de_sorte_redis_password="${REDIS_PASSWORD}" \
+            -e conexao_de_sorte_redis_database="${REDIS_DATABASE}" \
+            -e conexao_de_sorte_jwt_secret="${JWT_SECRET}" \
+            -e conexao_de_sorte_jwt_key_id="${JWT_KEY_ID}" \
+            -e conexao_de_sorte_jwt_signing_key="${JWT_SIGNING_KEY}" \
+            -e conexao_de_sorte_jwt_verification_key="${JWT_VERIFICATION_KEY}" \
+            -e conexao_de_sorte_jwt_issuer="${JWT_ISSUER}" \
+            -e conexao_de_sorte_jwt_jwks_uri="${JWT_JWKS_URI}" \
+            -e conexao_de_sorte_jwt_publickey="/run/secrets/jwt_public.pem" \
+            -e conexao_de_sorte_jwt_privatekey="/run/secrets/jwt_private.pem" \
+            -e conexao_de_sorte_encryption_master_key="/run/secrets/encryption_master_key" \
+            --label "traefik.enable=true" \
+            --label "traefik.docker.network=conexao-network" \
+            --label "traefik.http.routers.auth.rule=Host(\`auth.conexaodesorte.com.br\`)" \
+            --label "traefik.http.routers.auth.entrypoints=websecure" \
+            --label "traefik.http.routers.auth.tls.certresolver=letsencrypt" \
+            --label "traefik.http.services.auth.loadbalancer.server.port=8081" \
+            "$IMAGE"
+          
+          # Wait for container to be ready
+          echo "⏳ Waiting for container to be ready..."
+          sleep 30
+          
+          # Health check via localhost (internal)
+          echo "🏥 Performing health check..."
           for i in $(seq 1 10); do
-            echo "⏳ Tentativa $i/10..."
-            
-            # Try public health check endpoint
-            if curl -fsS https://auth.conexaodesorte.com.br/actuator/health >/dev/null 2>&1; then
-              echo "✅ Auth microservice está acessível publicamente!"
-              echo "🎉 Deployment completado com sucesso!"
-              exit 0
+            echo "⏳ Health check attempt $i/10..."
+            if curl -fsS http://localhost:8081/actuator/health >/dev/null 2>&1; then
+              echo "✅ Container is healthy!"
+              echo "🎉 Deployment successful!"
+              break
             fi
             
-            echo "⏳ Aguardando mais 30 segundos..."
-            sleep 30
+            if [ "$i" -eq 10 ]; then
+              echo "❌ Health check failed after 10 attempts"
+              echo "📋 Container logs (last 100 lines):"
+              docker logs auth-microservice --tail 100 || true
+              echo "📊 Container status:"
+              docker ps -a --filter name=auth-microservice || true
+              echo "🏥 Container health status:"
+              docker inspect auth-microservice --format='{{json .State.Health}}' || true
+              rm -rf "${SECRETS_DIR}" || true
+              exit 1
+            fi
+            sleep 20
           done
           
-          echo "⚠️ Não foi possível confirmar que o serviço está acessível publicamente"
-          echo "📋 Isso pode ser normal se o domínio ainda não estiver configurado"
-          echo "✅ Webhook de deployment foi enviado com sucesso - verificar logs do servidor"
+          echo "🧹 Cleaning up secrets and old images..."
+          rm -rf "${SECRETS_DIR}" || true
+          docker image prune -f --filter until=24h || true
+          
+          echo "✅ Production deployment completed successfully!"
 
   notify:
     runs-on: ubuntu-latest
