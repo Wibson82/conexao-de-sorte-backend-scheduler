@@ -193,7 +193,7 @@ jobs:
     needs: [build-image, sign-image]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (Azure + Webhook)
+    name: 🌟 Deploy to Production (GitHub Secrets + Webhook)
     permissions:
       id-token: write
       contents: read
@@ -201,71 +201,55 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure Login (Credential-based fallback)
-        uses: azure/login@v1
-        with:
-          creds: |
-            {
-              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
-              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
-              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
-            }
-
-      - name: Load Azure Key Vault secrets
+      - name: 📊 Validar e configurar secrets GitHub
         run: |
           set -euo pipefail
-          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
-          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
-            VAULT="${BASH_REMATCH[1]}"
-          else
-            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+          echo "🔍 Validando secrets disponíveis no GitHub..."
+          
+          # Validar secrets obrigatórios
+          MISSING_SECRETS=""
+          
+          if [[ -z "${{ secrets.AUTH_DB_PASSWORD }}" ]]; then
+            MISSING_SECRETS="${MISSING_SECRETS} AUTH_DB_PASSWORD"
+          fi
+          
+          if [[ -z "${{ secrets.JWT_SECRET_KEY }}" ]]; then
+            MISSING_SECRETS="${MISSING_SECRETS} JWT_SECRET_KEY"
+          fi
+          
+          if [[ -z "${{ secrets.REDIS_PASSWOR }}" ]]; then
+            MISSING_SECRETS="${MISSING_SECRETS} REDIS_PASSWOR"
+          fi
+          
+          if [[ -n "$MISSING_SECRETS" ]]; then
+            echo "❌ ERRO: Os seguintes secrets são obrigatórios mas estão ausentes:"
+            echo "   $MISSING_SECRETS"
             exit 1
           fi
           
-          echo "Loading secrets from Azure Key Vault: $VAULT" >&2
-          echo "VAULT=$VAULT" >> "$GITHUB_ENV"
-
-          get() { 
-            echo "Fetching secret: $1" >&2
-            SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
-            if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
-              echo "ERROR: Secret $1 not found in Azure Key Vault $VAULT" >&2
-              exit 1
-            fi
-            echo "$SECRET_VALUE"
-          }
-
-          # Database secrets (R2DBC para projetos reativos)
-          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
-          echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
-          echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
-          echo "DB_FLYWAY_URL=$(get conexao-de-sorte-database-flyway-url)" >> $GITHUB_ENV
+          echo "✅ Todos os secrets obrigatórios estão configurados"
           
-          # Redis secrets
-          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
-          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
-          echo "REDIS_DATABASE=$(get conexao-de-sorte-redis-database)" >> $GITHUB_ENV
+          # Configurar variáveis de ambiente (usando defaults quando necessário)
+          echo "DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}" >> $GITHUB_ENV
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET_KEY }}" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWOR }}" >> $GITHUB_ENV
           
-          # JWT secrets
-          echo "JWT_SIGNING_KEY=$(get conexao-de-sorte-jwt-signing-key)" >> $GITHUB_ENV
-          echo "JWT_VERIFICATION_KEY=$(get conexao-de-sorte-jwt-verification-key)" >> $GITHUB_ENV
-          echo "JWT_KEY_ID=$(get conexao-de-sorte-jwt-key-id)" >> $GITHUB_ENV
-          echo "JWT_SECRET=$(get conexao-de-sorte-jwt-secret)" >> $GITHUB_ENV
+          # Database configs com defaults
+          echo "DB_R2DBC_URL=r2dbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=false" >> $GITHUB_ENV
+          echo "DB_USERNAME=auth_user" >> $GITHUB_ENV
+          echo "DB_FLYWAY_URL=jdbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=false" >> $GITHUB_ENV
           
-          # Encryption secrets
-          echo "ENCRYPTION_MASTER_KEY=$(get conexao-de-sorte-encryption-master-key)" >> $GITHUB_ENV
+          # Redis configs com defaults  
+          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
+          echo "REDIS_PORT=6379" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=1" >> $GITHUB_ENV
           
-          # OAuth2 secrets
-          echo "OAUTH2_CLIENT_ID=$(get conexao-de-sorte-oauth2-client-id)" >> $GITHUB_ENV
-          echo "OAUTH2_CLIENT_SECRET=$(get conexao-de-sorte-oauth2-client-secret)" >> $GITHUB_ENV
-
-          # Server webhook endpoint (for deployment)
-          echo "WEBHOOK_ENDPOINT=$(get conexao-de-sorte-deployment-webhook-url)" >> $GITHUB_ENV
-          echo "WEBHOOK_SECRET=$(get conexao-de-sorte-deployment-webhook-secret)" >> $GITHUB_ENV
+          # Webhook config (pode usar GitHub webhook URL como fallback)
+          WEBHOOK_URL="https://api.github.com/repos/${{ github.repository }}/dispatches"
+          echo "WEBHOOK_ENDPOINT=${WEBHOOK_URL}" >> $GITHUB_ENV
+          echo "WEBHOOK_SECRET=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
           
-          echo "Success: Azure Key Vault secrets loaded successfully" >&2
+          echo "Success: GitHub secrets configured successfully" >&2
 
       - name: 📊 Prepare deployment payload
         run: |
@@ -283,11 +267,7 @@ jobs:
             "image": "${FULL_IMAGE}",
             "port": "8081",
             "environment": "production",
-            "secrets": {
-              "AZURE_CLIENT_ID": "${{ secrets.AZURE_CLIENT_ID }}",
-              "AZURE_TENANT_ID": "${{ secrets.AZURE_TENANT_ID }}",
-              "AZURE_CLIENT_SECRET": "${{ secrets.AZURE_CLIENT_SECRET }}",
-              "AZURE_KEYVAULT_ENDPOINT": "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}",
+            "environment_variables": {
               "DB_R2DBC_URL": "${DB_R2DBC_URL}",
               "DB_USERNAME": "${DB_USERNAME}",
               "DB_PASSWORD": "${DB_PASSWORD}",
@@ -296,13 +276,8 @@ jobs:
               "REDIS_PORT": "${REDIS_PORT}",
               "REDIS_PASSWORD": "${REDIS_PASSWORD}",
               "REDIS_DATABASE": "${REDIS_DATABASE}",
-              "JWT_SIGNING_KEY": "${JWT_SIGNING_KEY}",
-              "JWT_VERIFICATION_KEY": "${JWT_VERIFICATION_KEY}",
-              "JWT_KEY_ID": "${JWT_KEY_ID}",
               "JWT_SECRET": "${JWT_SECRET}",
-              "ENCRYPTION_MASTER_KEY": "${ENCRYPTION_MASTER_KEY}",
-              "OAUTH2_CLIENT_ID": "${OAUTH2_CLIENT_ID}",
-              "OAUTH2_CLIENT_SECRET": "${OAUTH2_CLIENT_SECRET}"
+              "SPRING_PROFILES_ACTIVE": "azure"
             },
             "labels": {
               "traefik.enable": "true",
