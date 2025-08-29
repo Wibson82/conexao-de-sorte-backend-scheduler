@@ -193,7 +193,7 @@ jobs:
     needs: [build-image, sign-image]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (OIDC + Webhook)
+    name: 🌟 Deploy to Production (Azure + Webhook)
     permissions:
       id-token: write
       contents: read
@@ -201,12 +201,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
+      - name: Azure Login (Credential-based fallback)
+        uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: |
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
 
       - name: Load Azure Key Vault secrets
         run: |
@@ -318,7 +322,7 @@ jobs:
           
           echo "✅ Deployment payload prepared"
 
-      - name: 🚀 Deploy via webhook (OIDC puro - sem SSH)
+      - name: 🚀 Deploy via webhook (Azure auth - sem SSH)
         run: |
           set -euo pipefail
           echo "🚀 Deploying auth-microservice via OIDC webhook..."
