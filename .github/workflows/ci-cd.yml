@@ -191,9 +191,9 @@ jobs:
 
   deploy-production:
     needs: [build-image, sign-image]
-    runs-on: srv649924-auth
+    runs-on: self-hosted
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    name: 🌟 Deploy to Production (srv649924-auth)
+    name: 🌟 Deploy to Production (Self-hosted)
     permissions:
       id-token: write
       contents: read
