@@ -30,6 +30,24 @@ jobs:
     name: 🧪 Test Self-hosted Runner
     steps:
       - uses: actions/checkout@v4
+      - name: Guard: forbid r2dbc:h2 outside tests
+        run: |
+          set -euo pipefail
+          FOUND=$(grep -R --line-number --include='*.yml' --include='*.properties' --include='*.yaml' "r2dbc:h2" src || true)
+          if echo "$FOUND" | grep -v "src/test/" | grep -q "r2dbc:h2"; then
+            echo "Forbidden r2dbc:h2 reference outside src/test" >&2
+            echo "$FOUND" | grep -v "src/test/" >&2 || true
+            exit 1
+          fi
+      - name: Guard: H2 not in non-test scopes
+        run: |
+          set -euo pipefail
+          mvn -B -q dependency:list -DincludeScope=compile -DoutputFile=dep.txt -DappendOutput=true || true
+          mvn -B -q dependency:list -DincludeScope=runtime -DoutputFile=dep.txt -DappendOutput=true || true
+          if grep -E "com\\.h2database:h2|io\\.r2dbc:r2dbc-h2" dep.txt; then
+            echo "H2 present in non-test scope (compile/runtime)" >&2
+            exit 1
+          fi
       - name: Test runner connectivity
         run: |
           echo "🎉 Self-hosted runner está funcionando!"
