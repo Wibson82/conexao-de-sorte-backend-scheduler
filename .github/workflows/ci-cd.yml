@@ -12,7 +12,7 @@ on:
         required: false
         default: 'production'
         type: choice
-        options: [production]
+        options: [staging, production]
 
 env:
   REGISTRY: ghcr.io
@@ -25,8 +25,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test-runner:
+    runs-on: [self-hosted, auth-service]
+    name: 🧪 Test Self-hosted Runner
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test runner connectivity
+        run: |
+          echo "🎉 Self-hosted runner está funcionando!"
+          echo "🏃 Runner: $(hostname)"
+          echo "📅 Data: $(date)"
+          echo "👤 Usuário: $(whoami)"
+          echo "📁 Diretório: $(pwd)"
+          echo "🔍 Java version:"
+          java -version || echo "Java não encontrado"
+          echo "🐳 Docker version:"
+          docker --version || echo "Docker não encontrado"
+
   build-and-test:
-    runs-on: ubuntu-latest
+    needs: test-runner
+    runs-on: self-hosted
     name: 🏗️ Build and Test
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +70,7 @@ jobs:
           retention-days: 7
 
   build-image:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     name: 🐳 Build Docker Image
     needs: build-and-test
     permissions:
@@ -121,7 +139,7 @@ jobs:
             VERSION=1.0.0
 
   sign-image:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     name: ✍️ Sign & Verify (100% OIDC keyless)
     needs: build-image
     permissions:
@@ -191,7 +209,7 @@ jobs:
 
   deploy-production:
     needs: [build-image, sign-image]
-    runs-on: self-hosted
+    runs-on: [self-hosted, auth-service]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     name: 🌟 Deploy to Production (Self-hosted)
     permissions:
@@ -314,11 +332,11 @@ jobs:
             --network conexao-network \
             --restart unless-stopped \
             -p "8081:8081" \
-            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
-            --health-interval=60s \
-            --health-timeout=30s \
-            --health-retries=3 \
-            --health-start-period=120s \
+            --health-cmd="curl -f http://localhost:8081/actuator/health/readiness && curl -f http://localhost:8081/actuator/health/liveness || exit 1" \
+            --health-interval=30s \
+            --health-timeout=10s \
+            --health-retries=5 \
+            --health-start-period=60s \
             -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx1024m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
             -e SPRING_PROFILES_ACTIVE="prod,azure" \
             -e ENVIRONMENT="production" \
@@ -337,13 +355,35 @@ jobs:
             "${FULL_IMAGE}"
           
           echo "✅ Container deployed successfully"
-          echo "🔍 Verifying container status..."
+          echo "🔍 Waiting for service to be ready..."
+          
+          # Wait for health check to pass (max 3 minutes)
+          TIMEOUT=180
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            if docker exec auth-microservice curl -f -s http://localhost:8081/actuator/health/readiness >/dev/null 2>&1; then
+              echo "✅ Service is ready and healthy!"
+              break
+            fi
+            echo "⏳ Waiting for service readiness... ($ELAPSED/$TIMEOUT seconds)"
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "❌ Service failed to become ready within $TIMEOUT seconds"
+            echo "🔍 Container logs:"
+            docker logs auth-microservice --tail 50
+            exit 1
+          fi
+          
+          echo "🔍 Final container status:"
           docker ps --filter name=auth-microservice --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           
-          echo "✅ Deployment completed successfully"
+          echo "🎉 Deployment completed successfully - Service is healthy!"
 
   notify:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     name: 📢 Notification
     if: always()
     needs: [build-and-test, build-image, sign-image, deploy-production]
