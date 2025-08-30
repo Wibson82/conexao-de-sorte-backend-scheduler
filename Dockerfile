@@ -74,6 +74,10 @@ RUN addgroup -g 1001 -S appgroup && \
 # Definir diretório da aplicação
 WORKDIR /app
 
+# Criar diretório de logs com permissões corretas
+RUN mkdir -p /app/logs && \
+    chown -R appuser:appgroup /app/logs
+
 # Copiar JAR da aplicação do estágio de build
 COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 
