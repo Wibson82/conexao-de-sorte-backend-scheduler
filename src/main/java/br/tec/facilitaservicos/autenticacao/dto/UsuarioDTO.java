@@ -1,14 +1,14 @@
 package br.tec.facilitaservicos.autenticacao.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import io.swagger.v3.oas.annotations.media.Schema;
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * DTO para informações básicas do usuário.
@@ -127,9 +127,6 @@ public class UsuarioDTO {
     
     public List<String> getPermissoes() { return permissoes; }
     public void setPermissoes(List<String> permissoes) { this.permissoes = permissoes; }
-    
-    public List<String> getPermissions() { return permissoes; }
-    public void setPermissions(List<String> permissions) { this.permissoes = permissions; }
     
     public String getAvatarUrl() { return avatarUrl; }
     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }

@@ -1,19 +1,21 @@
 package br.tec.facilitaservicos.autenticacao.config;
 
-import io.asyncer.r2dbc.mysql.MySqlConnectionConfiguration;
-import io.asyncer.r2dbc.mysql.MySqlConnectionFactory;
-import io.r2dbc.pool.ConnectionPool;
-import io.r2dbc.pool.ConnectionPoolConfiguration;
-import io.r2dbc.spi.ConnectionFactory;
+import java.time.Duration;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.r2dbc.config.AbstractR2dbcConfiguration;
 import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories;
+import org.springframework.lang.NonNull;
 import org.springframework.r2dbc.connection.R2dbcTransactionManager;
 import org.springframework.transaction.ReactiveTransactionManager;
 
-import java.time.Duration;
+import io.asyncer.r2dbc.mysql.MySqlConnectionConfiguration;
+import io.asyncer.r2dbc.mysql.MySqlConnectionFactory;
+import io.r2dbc.pool.ConnectionPool;
+import io.r2dbc.pool.ConnectionPoolConfiguration;
+import io.r2dbc.spi.ConnectionFactory;
 
 /**
  * Configuração do R2DBC para acesso reativo ao banco MySQL.
@@ -42,7 +44,7 @@ public class R2dbcConfig extends AbstractR2dbcConfiguration {
     
     @Override
     @Bean
-    public ConnectionFactory connectionFactory() {
+    public @NonNull ConnectionFactory connectionFactory() {
         // Parse da URL para extrair host, porta e database
         String cleanUrl = url.replace("r2dbc:mysql://", "");
         String[] urlParts = cleanUrl.split("/");

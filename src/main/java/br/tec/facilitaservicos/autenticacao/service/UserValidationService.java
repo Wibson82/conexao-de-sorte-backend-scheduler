@@ -71,7 +71,7 @@ public class UserValidationService {
                         user.getUsername(),
                         user.getEmail(),
                         user.getRoles(),
-                        user.getPermissions(),
+                        user.getPermissoes(),
                         claims.getExpirationTime().toInstant(),
                         claims.getSubject(),
                         claims.getIssuer()
@@ -82,8 +82,8 @@ public class UserValidationService {
                         logger.debug("✅ Token validado com sucesso: userId={}", userId);
                     });
             })
-            .onErrorReturn(TokenValidationResponseDTO.invalid("Token validation failed"))
-            .timeout(Duration.ofSeconds(3));
+            .timeout(Duration.ofSeconds(3))
+            .onErrorReturn(TokenValidationResponseDTO.invalid("Token validation failed"));
     }
 
     /**

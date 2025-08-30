@@ -1,28 +1,33 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-import br.tec.facilitaservicos.autenticacao.exception.TokenException;
-import com.nimbusds.jose.*;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.text.ParseException;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+
+import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import br.tec.facilitaservicos.autenticacao.exception.TokenException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.time.Instant;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Serviço para geração e validação de tokens JWT.
@@ -128,7 +133,7 @@ public class JwtService {
                 SignedJWT signedJWT = SignedJWT.parse(token);
                 Date expiration = signedJWT.getJWTClaimsSet().getExpirationTime();
                 return expiration != null && expiration.before(new Date());
-            } catch (Exception e) {
+            } catch (ParseException e) {
                 logger.warn("Erro ao verificar expiração do token: {}", e.getMessage());
                 return true; // Considera expirado em caso de erro
             }
@@ -212,8 +217,7 @@ public class JwtService {
         return claims;
     }
     
-    private Map<String, Object> createJwkSet(RSAPublicKey publicKey, String keyId) 
-            throws JOSEException {
+    private Map<String, Object> createJwkSet(RSAPublicKey publicKey, String keyId) {
         
         RSAKey rsaKey = new RSAKey.Builder(publicKey)
             .keyID(keyId)

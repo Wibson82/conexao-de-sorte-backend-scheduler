@@ -163,7 +163,7 @@ class UserValidationServiceTest {
                     assertThat(userDto.getEmail()).isEqualTo("usuario@teste.com");
                     assertThat(userDto.getFullName()).isEqualTo("Usuario Teste");
                     assertThat(userDto.getRoles()).containsExactly("USER", "ADMIN");
-                    assertThat(userDto.getPermissions()).containsExactly("read", "write", "admin");
+                    assertThat(userDto.getPermissoes()).containsExactly("read", "write", "admin");
                     assertThat(userDto.getActive()).isTrue();
                     return true;
                 })
