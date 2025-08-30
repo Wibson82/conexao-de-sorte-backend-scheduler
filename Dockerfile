@@ -104,8 +104,7 @@ LABEL org.opencontainers.image.url="https://conexaodesorte.com"
 LABEL org.opencontainers.image.source="https://github.com/conexaodesorte/autenticacao"
 
 # Comando de inicialização com dumb-init para signal handling
-ENTRYPOINT ["dumb-init", "--", "java"]
-CMD ["-jar", "app.jar"]
+ENTRYPOINT ["dumb-init", "--", "java", "-jar", "app.jar"]
 
 # === ESTÁGIO 3: DEBUG (Opcional) ===
 FROM runtime AS debug
@@ -120,4 +119,4 @@ ENV JAVA_OPTS="$JAVA_OPTS \
 EXPOSE 5005
 
 # Comando para debug
-CMD ["sh", "-c", "echo 'Starting AUTH service in DEBUG mode on port 5005' && java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["dumb-init", "--", "sh", "-c", "echo 'Starting AUTH service in DEBUG mode on port 5005' && java $JAVA_OPTS -jar app.jar"]
