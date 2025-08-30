@@ -164,7 +164,7 @@ Para usar rotação de chaves em produção:
 ```bash
 export AZURE_KEYVAULT_URI=https://seu-keyvault.vault.azure.net/
 export AZURE_CLIENT_ID=sua-app-registration-id
-export AZURE_CLIENT_SECRET=seu-client-secret
+# OIDC-only: não utilizar AZURE_CLIENT_SECRET; use OIDC + Key Vault
 export AZURE_TENANT_ID=seu-tenant-id
 ```
 

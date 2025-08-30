@@ -100,7 +100,8 @@ app:
   # OAuth2 Configuration
   oauth2:
     client-id: ${conexao-de-sorte-oauth2-client-id:}
-    client-secret: ${conexao-de-sorte-oauth2-client-secret:}
+    # OIDC-only: sem client-secret
+    # client-secret: (não utilizar)
     redirect-uri: https://conexaodesorte.com.br/oauth2/callback
     scopes: openid,profile,email
     
