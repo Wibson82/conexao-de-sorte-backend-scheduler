@@ -30,7 +30,7 @@ jobs:
     name: 🧪 Test Self-hosted Runner
     steps:
       - uses: actions/checkout@v4
-      - name: Guard: forbid r2dbc:h2 outside tests
+      - name: "Guard: forbid r2dbc:h2 outside tests"
         run: |
           set -euo pipefail
           FOUND=$(grep -R --line-number --include='*.yml' --include='*.properties' --include='*.yaml' "r2dbc:h2" src || true)
@@ -39,7 +39,7 @@ jobs:
             echo "$FOUND" | grep -v "src/test/" >&2 || true
             exit 1
           fi
-      - name: Guard: H2 not in non-test scopes
+      - name: "Guard: H2 not in non-test scopes"
         run: |
           set -euo pipefail
           mvn -B -q dependency:list -DincludeScope=compile -DoutputFile=dep.txt -DappendOutput=true || true
