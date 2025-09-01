@@ -22,10 +22,11 @@ import org.springframework.test.context.ActiveProfiles;
 import br.tec.facilitaservicos.autenticacao.dto.RequisicaoLoginDTO;
 import br.tec.facilitaservicos.autenticacao.dto.RequisicaoRefreshDTO;
 import br.tec.facilitaservicos.autenticacao.entity.RefreshToken;
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
 import br.tec.facilitaservicos.autenticacao.exception.AuthenticationException;
 import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
-import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
+import br.tec.facilitaservicos.autenticacao.client.UserServiceClient;
+import java.util.Set;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -38,7 +39,7 @@ import reactor.test.StepVerifier;
 class AuthServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserServiceClient userServiceClient;
 
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
@@ -52,17 +53,17 @@ class AuthServiceTest {
     @InjectMocks
     private AuthService authService;
 
-    private Usuario usuarioValido;
+    private UsuarioDTO usuarioValido;
     private RequisicaoLoginDTO requisicaoLoginValida;
 
     @BeforeEach
     void setUp() {
         // Setup do usuário válido
-        usuarioValido = new Usuario();
+        usuarioValido = new UsuarioDTO();
         usuarioValido.setId(1L);
         usuarioValido.setEmail("usuario@teste.com");
-        usuarioValido.setNomeUsuario("usuario@teste.com");
-        usuarioValido.setSenhaHash("$2a$10$hashSenha");
+        usuarioValido.setUsername("usuario@teste.com");
+        usuarioValido.setPassword("$2a$10$hashSenha");
         usuarioValido.setAtivo(true);
         usuarioValido.setEmailVerificado(true);
         usuarioValido.setContaBloqueada(false);
@@ -79,17 +80,17 @@ class AuthServiceTest {
         String accessToken = "access.token.jwt";
         String refreshTokenValue = "refresh.token.uuid";
         
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
         when(passwordEncoder.matches(anyString(), anyString()))
                 .thenReturn(true);
-        when(jwtService.generateAccessToken(any(Usuario.class)))
+        when(jwtService.generateAccessToken(any(UsuarioDTO.class)))
                 .thenReturn(Mono.just(accessToken));
         // Refresh token é gerado internamente no AuthService
         when(refreshTokenRepository.save(any(RefreshToken.class)))
                 .thenReturn(Mono.just(new RefreshToken()));
         // Mock para updateTentativasLoginFalidas - corrige NullPointerException
-        when(usuarioRepository.updateTentativasLoginFalidas(anyLong(), anyInt()))
+        when(userServiceClient.updateTentativasLoginFalidas(anyLong(), anyInt()))
                 .thenReturn(Mono.just(1));
 
         // Act & Assert
@@ -103,10 +104,10 @@ class AuthServiceTest {
                 .verifyComplete();
 
         // Verificações adicionais
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verify(jwtService).generateAccessToken(usuarioValido);
-        verify(usuarioRepository).updateTentativasLoginFalidas(usuarioValido.getId(), 0);
+        verify(userServiceClient).updateTentativasLoginFalidas(usuarioValido.getId(), 0);
         verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
@@ -114,7 +115,7 @@ class AuthServiceTest {
     @DisplayName("Deve falhar autenticação quando usuário não encontrado")
     void deveFalharAutenticacaoQuandoUsuarioNaoEncontrado() {
         // Arrange
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.empty());
 
         // Act & Assert
@@ -122,7 +123,7 @@ class AuthServiceTest {
                 .expectError(AuthenticationException.class)
                 .verify();
 
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verifyNoInteractions(passwordEncoder, jwtService);
     }
 
@@ -130,7 +131,7 @@ class AuthServiceTest {
     @DisplayName("Deve falhar autenticação quando senha incorreta")
     void deveFalharAutenticacaoQuandoSenhaIncorreta() {
         // Arrange
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
         when(passwordEncoder.matches(anyString(), anyString()))
                 .thenReturn(false);
@@ -140,7 +141,7 @@ class AuthServiceTest {
                 .expectError(AuthenticationException.class)
                 .verify();
 
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verifyNoInteractions(jwtService);
     }
@@ -152,7 +153,7 @@ class AuthServiceTest {
         usuarioValido.setContaBloqueada(true);
         usuarioValido.setDataBloqueio(LocalDateTime.now().minusMinutes(10));
 
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
         when(passwordEncoder.matches(anyString(), anyString()))
                 .thenReturn(true);
@@ -162,7 +163,7 @@ class AuthServiceTest {
                 .expectError(AuthenticationException.class)
                 .verify();
 
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verifyNoInteractions(jwtService);
     }
@@ -173,7 +174,7 @@ class AuthServiceTest {
         // Arrange
         usuarioValido.setAtivo(false);
 
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
         when(passwordEncoder.matches(anyString(), anyString()))
                 .thenReturn(true);
@@ -183,7 +184,7 @@ class AuthServiceTest {
                 .expectError(AuthenticationException.class)
                 .verify();
 
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verifyNoInteractions(jwtService);
     }
@@ -194,7 +195,7 @@ class AuthServiceTest {
         // Arrange
         usuarioValido.setEmailVerificado(false);
 
-        when(usuarioRepository.findByEmailOrNomeUsuario(anyString()))
+        when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
         when(passwordEncoder.matches(anyString(), anyString()))
                 .thenReturn(true);
@@ -204,7 +205,7 @@ class AuthServiceTest {
                 .expectError(AuthenticationException.class)
                 .verify();
 
-        verify(usuarioRepository).findByEmailOrNomeUsuario("usuario@teste.com");
+        verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
         verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
         verifyNoInteractions(jwtService);
     }
@@ -226,7 +227,7 @@ class AuthServiceTest {
 
         when(refreshTokenRepository.findByTokenHashAndAtivoTrueAndRevogadoFalse(anyString()))
                 .thenReturn(Mono.just(refreshTokenEntity));
-        when(usuarioRepository.findById(1L))
+        when(userServiceClient.findById(1L))
                 .thenReturn(Mono.just(usuarioValido));
         when(jwtService.generateAccessToken(usuarioValido))
                 .thenReturn(Mono.just(novoAccessToken));
@@ -247,7 +248,7 @@ class AuthServiceTest {
                 .verifyComplete();
 
         verify(refreshTokenRepository).findByTokenHashAndAtivoTrueAndRevogadoFalse(anyString());
-        verify(usuarioRepository).findById(1L);
+        verify(userServiceClient).findById(1L);
         verify(jwtService).generateAccessToken(usuarioValido);
     }
 
@@ -267,7 +268,7 @@ class AuthServiceTest {
                 .verify();
 
         verify(refreshTokenRepository).findByTokenHashAndAtivoTrueAndRevogadoFalse(anyString());
-        verifyNoInteractions(usuarioRepository, jwtService);
+        verifyNoInteractions(userServiceClient, jwtService);
     }
 
     @Test

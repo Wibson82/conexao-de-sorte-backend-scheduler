@@ -3,6 +3,7 @@ package br.tec.facilitaservicos.autenticacao.service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,8 +20,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.nimbusds.jwt.JWTClaimsSet;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
+import br.tec.facilitaservicos.autenticacao.client.UserServiceClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -33,7 +34,7 @@ import reactor.test.StepVerifier;
 class UserValidationServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserServiceClient userServiceClient;
 
     @Mock
     private JwtService jwtService;
@@ -42,20 +43,20 @@ class UserValidationServiceTest {
     @InjectMocks
     private UserValidationService userValidationService;
 
-    private Usuario usuarioValido;
+    private UsuarioDTO usuarioValido;
     private JWTClaimsSet claimsValidas;
 
     @BeforeEach
     void setUp() throws Exception {
         // Setup do usuário válido
-        usuarioValido = new Usuario();
+        usuarioValido = new UsuarioDTO();
         usuarioValido.setId(1L);
         usuarioValido.setEmail("usuario@teste.com");
-        usuarioValido.setNomeUsuario("usuario@teste.com");
+        usuarioValido.setUsername("usuario@teste.com");
         usuarioValido.setPrimeiroNome("Usuario");
         usuarioValido.setSobrenome("Teste");
-        usuarioValido.setRoles("USER,ADMIN");
-        usuarioValido.setPermissoes("read,write,admin");
+        usuarioValido.setRoles(Set.of("USER", "ADMIN"));
+        usuarioValido.setPermissoes(Set.of("read", "write", "admin"));
         usuarioValido.setAtivo(true);
         usuarioValido.setEmailVerificado(true);
         usuarioValido.setUltimoLogin(LocalDateTime.now());
@@ -80,7 +81,7 @@ class UserValidationServiceTest {
         
         when(jwtService.validateAccessToken(validToken))
                 .thenReturn(Mono.just(claimsValidas));
-        when(usuarioRepository.findById(1L))
+        when(userServiceClient.findById(1L))
                 .thenReturn(Mono.just(usuarioValido));
 
         // Act & Assert
@@ -100,7 +101,7 @@ class UserValidationServiceTest {
                 .verifyComplete();
 
         verify(jwtService).validateAccessToken(validToken);
-        verify(usuarioRepository).findById(1L);
+        verify(userServiceClient).findById(1L);
     }
 
     @Test
@@ -122,7 +123,7 @@ class UserValidationServiceTest {
                 .verifyComplete();
 
         verify(jwtService).validateAccessToken(invalidToken);
-        verifyNoInteractions(usuarioRepository);
+        verifyNoInteractions(userServiceClient);
     }
 
     @Test
@@ -152,7 +153,7 @@ class UserValidationServiceTest {
         // Arrange
         Long userId = 1L;
         
-        when(usuarioRepository.findById(userId))
+        when(userServiceClient.findById(userId))
                 .thenReturn(Mono.just(usuarioValido));
 
         // Act & Assert
@@ -169,7 +170,7 @@ class UserValidationServiceTest {
                 })
                 .verifyComplete();
 
-        verify(usuarioRepository).findById(userId);
+        verify(userServiceClient).findById(userId);
     }
 
     @Test
@@ -180,14 +181,14 @@ class UserValidationServiceTest {
 
         // Em testes, o CircuitBreaker pode não funcionar como esperado
         // Vamos testar o comportamento quando o repositório retorna vazio
-        when(usuarioRepository.findById(userId))
+        when(userServiceClient.findById(userId))
                 .thenReturn(Mono.empty());
 
         // Act & Assert
         StepVerifier.create(userValidationService.getUserById(userId))
                 .verifyComplete(); // Espera que complete vazio, não que retorne usuário anônimo
 
-        verify(usuarioRepository).findById(userId);
+        verify(userServiceClient).findById(userId);
     }
 
     @Test
@@ -196,7 +197,7 @@ class UserValidationServiceTest {
         // Arrange
         Long userId = 1L;
         
-        when(usuarioRepository.findById(userId))
+        when(userServiceClient.findById(userId))
                 .thenReturn(Mono.just(usuarioValido));
 
         // Act & Assert
@@ -208,7 +209,7 @@ class UserValidationServiceTest {
                 })
                 .verifyComplete();
 
-        verify(usuarioRepository).findById(userId);
+        verify(userServiceClient).findById(userId);
     }
 
     @Test
@@ -217,7 +218,7 @@ class UserValidationServiceTest {
         // Arrange
         Long userId = 999L;
         
-        when(usuarioRepository.findById(userId))
+        when(userServiceClient.findById(userId))
                 .thenReturn(Mono.empty());
 
         // Act & Assert
@@ -228,7 +229,7 @@ class UserValidationServiceTest {
                 })
                 .verifyComplete();
 
-        verify(usuarioRepository).findById(userId);
+        verify(userServiceClient).findById(userId);
     }
 
     @Test

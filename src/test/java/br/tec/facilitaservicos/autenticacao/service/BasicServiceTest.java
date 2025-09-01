@@ -1,6 +1,6 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,16 +19,16 @@ class BasicServiceTest {
     @DisplayName("Deve criar usuário básico")
     void deveCriarUsuarioBasico() {
         // Arrange & Act
-        Usuario usuario = new Usuario();
+        UsuarioDTO usuario = new UsuarioDTO();
         usuario.setId(1L);
         usuario.setEmail("teste@exemplo.com");
-        usuario.setNomeUsuario("teste");
+        usuario.setUsername("teste");
         usuario.setAtivo(true);
 
         // Assert
         assertThat(usuario.getId()).isEqualTo(1L);
         assertThat(usuario.getEmail()).isEqualTo("teste@exemplo.com");
-        assertThat(usuario.getNomeUsuario()).isEqualTo("teste");
+        assertThat(usuario.getUsername()).isEqualTo("teste");
         assertThat(usuario.isAtivo()).isTrue();
     }
 
@@ -36,12 +36,12 @@ class BasicServiceTest {
     @DisplayName("Deve validar campos obrigatórios do usuário")
     void deveValidarCamposObrigatoriosDoUsuario() {
         // Arrange & Act
-        Usuario usuario = new Usuario();
+        UsuarioDTO usuario = new UsuarioDTO();
 
         // Assert
         assertThat(usuario.getId()).isNull();
         assertThat(usuario.getEmail()).isNull();
-        assertThat(usuario.getNomeUsuario()).isNull();
+        assertThat(usuario.getUsername()).isNull();
     }
 
     @Test

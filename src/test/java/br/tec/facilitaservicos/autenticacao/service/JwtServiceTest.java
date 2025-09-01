@@ -20,7 +20,8 @@ import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.context.ActiveProfiles;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
+import java.util.Set;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -38,7 +39,7 @@ class JwtServiceTest {
     @InjectMocks
     private JwtService jwtService;
 
-    private Usuario usuario;
+    private UsuarioDTO usuario;
     private RSAPrivateKey realPrivateKey;
     private RSAPublicKey realPublicKey;
 
@@ -53,14 +54,14 @@ class JwtServiceTest {
         realPublicKey = (RSAPublicKey) keyPair.getPublic();
 
         // Setup do usuário
-        usuario = new Usuario();
+        usuario = new UsuarioDTO();
         usuario.setId(1L);
         usuario.setEmail("usuario@teste.com");
-        usuario.setNomeUsuario("usuario@teste.com");
+        usuario.setUsername("usuario@teste.com");
         usuario.setPrimeiroNome("Usuario");
         usuario.setSobrenome("Teste");
-        usuario.setRoles("USER,ADMIN");
-        usuario.setPermissoes("read,write,admin");
+        usuario.setRoles(Set.of("USER", "ADMIN"));
+        usuario.setPermissoes(Set.of("read", "write", "admin"));
         usuario.setAtivo(true);
         usuario.setEmailVerificado(true);
         usuario.setUltimoLogin(LocalDateTime.now());

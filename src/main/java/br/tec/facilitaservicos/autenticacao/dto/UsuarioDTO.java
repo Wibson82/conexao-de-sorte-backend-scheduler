@@ -200,6 +200,22 @@ public class UsuarioDTO {
         this.dataAtualizacao = dataAtualizacao;
     }
 
+    // Métodos auxiliares para compatibilidade com testes
+    public String getFullName() {
+        if (primeiroNome != null && sobrenome != null) {
+            return primeiroNome + " " + sobrenome;
+        } else if (primeiroNome != null) {
+            return primeiroNome;
+        } else if (sobrenome != null) {
+            return sobrenome;
+        }
+        return username != null ? username : email;
+    }
+
+    public Boolean getActive() {
+        return ativo;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
