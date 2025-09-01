@@ -122,11 +122,11 @@ curl -f http://localhost:8081/.well-known/jwks.json
 # Deve retornar JSON com chaves públicas
 
 # Verificar introspection endpoint (se disponível)
-curl -f http://localhost:8081/api/v1/auth/introspect
+curl -f http://localhost:8081/rest/v1/auth/introspect
 # Deve retornar resposta válida (mesmo que unauthorized)
 
 # Testar geração de token (com credenciais válidas)
-curl -X POST http://localhost:8081/api/v1/auth/login \
+curl -X POST http://localhost:8081/rest/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"test","password":"test"}'
 # Deve retornar token JWT válido ou erro de credenciais

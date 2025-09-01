@@ -77,6 +77,14 @@ jobs:
           ./mvnw --version
       - name: Run unit tests (test profile)
         run: ./mvnw clean test -Dspring.profiles.active=test
+      - name: Enforce JaCoCo code coverage
+        run: ./mvnw jacoco:check
+      - name: Run Snyk SAST scan
+        uses: snyk/actions/maven@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high
       - name: Build application (skip tests)
         run: ./mvnw clean package -DskipTests
       - name: Upload artifact

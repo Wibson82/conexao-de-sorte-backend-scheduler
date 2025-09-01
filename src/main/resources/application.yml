@@ -12,27 +12,6 @@ spring:
   main:
     allow-bean-definition-overriding: true
     
-  r2dbc:
-    url: ${conexao-de-sorte-database-r2dbc-url:r2dbc:mysql://conexao-mysql:3306/conexao_sorte_auth?useSSL=true&allowPublicKeyRetrieval=true}
-    username: ${conexao-de-sorte-database-username:}
-    password: ${conexao-de-sorte-database-password:}
-    pool:
-      enabled: true
-      initial-size: 5
-      max-size: 20
-      max-idle-time: 30m
-      max-acquire-time: 60s
-      
-  # Flyway para migrations (usa JDBC)
-  flyway:
-    enabled: true
-    url: ${conexao-de-sorte-database-flyway-url:jdbc:mysql://localhost:3306/conexao_sorte_auth}
-    user: ${conexao-de-sorte-database-username:conexao_sorte}
-    password: ${conexao-de-sorte-database-password:}
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-    validate-migration: false
-    
   # Cache reativo (Redis)
   data:
     redis:
@@ -62,6 +41,9 @@ spring:
       - optional:configtree:/etc/secrets/azure/
       - optional:configtree:/mnt/secrets/
       - optional:file:./secrets.properties
+
+user-service:
+  url: ${USER_SERVICE_URL:http://localhost:8082}
 
 server:
   port: ${conexao-de-sorte-server-port:8081}
@@ -242,12 +224,6 @@ spring:
     activate:
       on-profile: dev
       
-  r2dbc:
-    url: r2dbc:mysql://localhost:3306/conexao_sorte_auth_dev
-    
-  flyway:
-    url: jdbc:mysql://localhost:3306/conexao_sorte_auth_dev
-    
 logging:
   level:
     br.tec.facilitaservicos.autenticacao: DEBUG
@@ -266,13 +242,6 @@ spring:
     activate:
       on-profile: test
       
-  r2dbc:
-    url: r2dbc:mysql://localhost:3306/conexao_sorte_auth_test
-    
-  flyway:
-    url: jdbc:mysql://localhost:3306/conexao_sorte_auth_test
-    clean-disabled: false
-    
   cloud:
     azure:
       keyvault:
@@ -298,19 +267,6 @@ spring:
     activate:
       on-profile: prod
       
-  r2dbc:
-    url: r2dbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:conexao_sorte_auth}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-    pool:
-      initial-size: 10
-      max-size: 50
-      
-  flyway:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:conexao_sorte_auth}
-    user: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-    
 server:
   port: 8081
   ssl:

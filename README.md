@@ -364,3 +364,13 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para de
 
 **🔐 Microserviço de Autenticação - Conexão de Sorte**  
 *Segurança, Performance e Confiabilidade*
+## ✅ Qualidade e Segurança (CI)
+
+- Cobertura: JaCoCo configurado com mínimo de 80% (gate no workflow Maven Verify).
+- SAST: CodeQL habilitado em `.github/workflows/codeql.yml` para varredura contínua.
+
+## 🧪 Staging: Integrações, Robustez e Cache
+
+- Azure Key Vault via OIDC (sem client-secret) e configtree: validar carregamento de segredos no Staging.
+- Resilience4j: circuit breaker e retry configuráveis (ver `application-staging.yml`); validar cenários de falha.
+- Cache: validar TTLs e acertos de cache (Redis/Caffeine) em endpoints mais acessados.

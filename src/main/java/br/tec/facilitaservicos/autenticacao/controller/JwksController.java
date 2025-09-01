@@ -42,7 +42,7 @@ import reactor.core.publisher.Mono;
  * ============================================================================
  */
 @RestController
-@RequestMapping
+@RequestMapping("/rest/v1")
 @Tag(name = "JWKS", description = "Endpoints para JWK Set (JSON Web Key Set)")
 public class JwksController {
 

@@ -1,233 +1,253 @@
 package br.tec.facilitaservicos.autenticacao.dto;
 
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Set;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
-import io.swagger.v3.oas.annotations.media.Schema;
-
-/**
- * DTO para informações básicas do usuário.
- * 
- * Usado para comunicação inter-service, contendo apenas
- * informações não-sensíveis necessárias para outros microserviços.
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Schema(description = "Informações básicas do usuário")
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UsuarioDTO {
-    
-    @Schema(description = "ID único do usuário", example = "123")
     private Long id;
-    
-    @Schema(description = "Nome de usuário/email", example = "usuario@exemplo.com")
-    private String username;
-    
-    @Schema(description = "Nome completo", example = "João Silva")
-    private String fullName;
-    
-    @Schema(description = "Email do usuário", example = "usuario@exemplo.com")
     private String email;
-    
-    @Schema(description = "Primeiro nome", example = "João")
+    private String username;
+    private String password; // Only for internal use, never expose
     private String primeiroNome;
-    
-    @Schema(description = "Sobrenome", example = "Silva")
     private String sobrenome;
-    
-    @Schema(description = "Status ativo", example = "true")
-    private Boolean active;
-    
-    @Schema(description = "Email verificado", example = "true")
-    private Boolean emailVerified;
-    
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-    @Schema(description = "Data de criação", example = "2024-01-15T10:30:00Z")
-    private Instant criadoEm;
-    
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-    @Schema(description = "Último login", example = "2024-01-16T14:22:10Z")
-    private Instant ultimoLogin;
-    
-    @Schema(description = "Roles do usuário", example = "[\"USER\", \"ADMIN\"]")
-    private List<String> roles;
-    
-    @Schema(description = "Permissões específicas", example = "[\"READ\", \"WRITE\"]")
-    private List<String> permissoes;
-    
-    @Schema(description = "URL do avatar", example = "https://example.com/avatar.jpg")
-    private String avatarUrl;
-    
-    @Schema(description = "Timezone", example = "America/Sao_Paulo")
-    private String timezone;
-    
-    @Schema(description = "Locale", example = "pt_BR")
-    private String locale;
-    
-    // Constructors
-    public UsuarioDTO() {}
-    
-    public UsuarioDTO(Long id, String username, String fullName, String email, 
-                      String primeiroNome, String sobrenome, Boolean active, Boolean emailVerified,
-                      Instant criadoEm, Instant ultimoLogin, List<String> roles, List<String> permissoes,
-                      String avatarUrl, String timezone, String locale) {
+    private Set<String> roles;
+    private Set<String> permissoes;
+    private boolean ativo;
+    private boolean emailVerificado;
+    private LocalDateTime ultimoLogin;
+    private int tentativasLoginFalidas;
+    private boolean contaBloqueada;
+    private LocalDateTime dataBloqueio;
+    private LocalDateTime dataCriacao;
+    private LocalDateTime dataAtualizacao;
+
+    // Construtor padrão (NoArgsConstructor)
+    public UsuarioDTO() {
+    }
+
+    // Construtor completo (AllArgsConstructor)
+    public UsuarioDTO(Long id, String email, String username, String password, String primeiroNome, String sobrenome,
+                      Set<String> roles, Set<String> permissoes, boolean ativo, boolean emailVerificado,
+                      LocalDateTime ultimoLogin, int tentativasLoginFalidas, boolean contaBloqueada,
+                      LocalDateTime dataBloqueio, LocalDateTime dataCriacao, LocalDateTime dataAtualizacao) {
         this.id = id;
-        this.username = username;
-        this.fullName = fullName;
         this.email = email;
+        this.username = username;
+        this.password = password;
         this.primeiroNome = primeiroNome;
         this.sobrenome = sobrenome;
-        this.active = active;
-        this.emailVerified = emailVerified;
-        this.criadoEm = criadoEm;
-        this.ultimoLogin = ultimoLogin;
         this.roles = roles;
         this.permissoes = permissoes;
-        this.avatarUrl = avatarUrl;
-        this.timezone = timezone;
-        this.locale = locale;
+        this.ativo = ativo;
+        this.emailVerificado = emailVerificado;
+        this.ultimoLogin = ultimoLogin;
+        this.tentativasLoginFalidas = tentativasLoginFalidas;
+        this.contaBloqueada = contaBloqueada;
+        this.dataBloqueio = dataBloqueio;
+        this.dataCriacao = dataCriacao;
+        this.dataAtualizacao = dataAtualizacao;
     }
-    
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
-    
-    public String getFullName() { return fullName; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
-    
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    
-    public String getPrimeiroNome() { return primeiroNome; }
-    public void setPrimeiroNome(String primeiroNome) { this.primeiroNome = primeiroNome; }
-    
-    public String getSobrenome() { return sobrenome; }
-    public void setSobrenome(String sobrenome) { this.sobrenome = sobrenome; }
-    
-    public Boolean getActive() { return active; }
-    public void setActive(Boolean active) { this.active = active; }
-    
-    public Boolean getEmailVerified() { return emailVerified; }
-    public void setEmailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; }
-    
-    public Instant getCriadoEm() { return criadoEm; }
-    public void setCriadoEm(Instant criadoEm) { this.criadoEm = criadoEm; }
-    
-    public Instant getUltimoLogin() { return ultimoLogin; }
-    public void setUltimoLogin(Instant ultimoLogin) { this.ultimoLogin = ultimoLogin; }
-    
-    public List<String> getRoles() { return roles; }
-    public void setRoles(List<String> roles) { this.roles = roles; }
-    
-    public List<String> getPermissoes() { return permissoes; }
-    public void setPermissoes(List<String> permissoes) { this.permissoes = permissoes; }
-    
-    public String getAvatarUrl() { return avatarUrl; }
-    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
-    
-    public String getTimezone() { return timezone; }
-    public void setTimezone(String timezone) { this.timezone = timezone; }
-    
-    public String getLocale() { return locale; }
-    public void setLocale(String locale) { this.locale = locale; }
-    
-    // Builder Pattern - Manual Implementation (NO LOMBOK)
-    public static UsuarioDTOBuilder builder() {
-        return new UsuarioDTOBuilder();
+
+    // Construtor para uso interno do AuthService (mantido do original)
+    public UsuarioDTO(Long id, String email, String username, String password, Set<String> roles, Set<String> permissoes, boolean ativo, boolean emailVerificado, LocalDateTime ultimoLogin, int tentativasLoginFalidas, boolean contaBloqueada, LocalDateTime dataBloqueio) {
+        this.id = id;
+        this.email = email;
+        this.username = username;
+        this.password = password;
+        this.roles = roles;
+        this.permissoes = permissoes;
+        this.ativo = ativo;
+        this.emailVerificado = emailVerificado;
+        this.ultimoLogin = ultimoLogin;
+        this.tentativasLoginFalidas = tentativasLoginFalidas;
+        this.contaBloqueada = contaBloqueada;
+        this.dataBloqueio = dataBloqueio;
     }
-    
-    public static class UsuarioDTOBuilder {
-        private Long id;
-        private String username;
-        private String fullName;
-        private String email;
-        private String primeiroNome;
-        private String sobrenome;
-        private Boolean active;
-        private Boolean emailVerified;
-        private Instant criadoEm;
-        private Instant ultimoLogin;
-        private List<String> roles;
-        private List<String> permissoes;
-        private String avatarUrl;
-        private String timezone;
-        private String locale;
-        
-        public UsuarioDTOBuilder id(Long id) { this.id = id; return this; }
-        public UsuarioDTOBuilder username(String username) { this.username = username; return this; }
-        public UsuarioDTOBuilder fullName(String fullName) { this.fullName = fullName; return this; }
-        public UsuarioDTOBuilder email(String email) { this.email = email; return this; }
-        public UsuarioDTOBuilder primeiroNome(String primeiroNome) { this.primeiroNome = primeiroNome; return this; }
-        public UsuarioDTOBuilder sobrenome(String sobrenome) { this.sobrenome = sobrenome; return this; }
-        public UsuarioDTOBuilder active(Boolean active) { this.active = active; return this; }
-        public UsuarioDTOBuilder emailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; return this; }
-        public UsuarioDTOBuilder criadoEm(Instant criadoEm) { this.criadoEm = criadoEm; return this; }
-        public UsuarioDTOBuilder ultimoLogin(Instant ultimoLogin) { this.ultimoLogin = ultimoLogin; return this; }
-        public UsuarioDTOBuilder roles(List<String> roles) { this.roles = roles; return this; }
-        public UsuarioDTOBuilder permissoes(List<String> permissoes) { this.permissoes = permissoes; return this; }
-        public UsuarioDTOBuilder avatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; return this; }
-        public UsuarioDTOBuilder timezone(String timezone) { this.timezone = timezone; return this; }
-        public UsuarioDTOBuilder locale(String locale) { this.locale = locale; return this; }
-        
-        public UsuarioDTO build() {
-            return new UsuarioDTO(id, username, fullName, email, primeiroNome, sobrenome, 
-                                 active, emailVerified, criadoEm, ultimoLogin, roles, permissoes,
-                                 avatarUrl, timezone, locale);
-        }
+
+    // Getters e Setters
+    public Long getId() {
+        return id;
     }
-    
-    // Factory methods from Entity
-    public static UsuarioDTO from(Usuario usuario) {
-        if (usuario == null) return null;
-        
-        return UsuarioDTO.builder()
-            .id(usuario.getId())
-            .username(usuario.getUsername())
-            .email(usuario.getEmail())
-            .fullName(usuario.getNomeCompleto())
-            .primeiroNome(usuario.getPrimeiroNome())
-            .sobrenome(usuario.getSobrenome())
-            .active(usuario.isAtivo())
-            .emailVerified(usuario.isEmailVerificado())
-            .criadoEm(usuario.getCriadoEm() != null ? usuario.getCriadoEm().toInstant(ZoneOffset.UTC) : null)
-            .ultimoLogin(usuario.getUltimoLogin() != null ? usuario.getUltimoLogin().toInstant(ZoneOffset.UTC) : null)
-            .roles(usuario.getRoles() != null ? List.of(usuario.getRoles().split(",")) : List.of())
-            .permissoes(usuario.getPermissoes() != null ? List.of(usuario.getPermissoes().split(",")) : List.of())
-            .avatarUrl(usuario.getAvatarUrl())
-            .timezone(usuario.getTimezone())
-            .locale(usuario.getLocale())
-            .build();
+
+    public void setId(Long id) {
+        this.id = id;
     }
-    
-    public static UsuarioDTO basicInfo(Usuario usuario) {
-        if (usuario == null) return null;
-        
-        return UsuarioDTO.builder()
-            .id(usuario.getId())
-            .username(usuario.getUsername())
-            .email(usuario.getEmail())
-            .fullName(usuario.getNomeCompleto())
-            .active(usuario.isAtivo())
-            .build();
+
+    public String getEmail() {
+        return email;
     }
-    
-    public static UsuarioDTO anonimo(Long userId) {
-        return UsuarioDTO.builder()
-            .id(userId)
-            .username("Usuário Anônimo")
-            .fullName("Usuário Anônimo")
-            .active(true)
-            .build();
+
+    public void setEmail(String email) {
+        this.email = email;
     }
-    
-    public String toLogString() {
-        return String.format("Usuario[id=%s, username=%s, email=%s, active=%s]", 
-                           id, username, email, active);
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getPrimeiroNome() {
+        return primeiroNome;
+    }
+
+    public void setPrimeiroNome(String primeiroNome) {
+        this.primeiroNome = primeiroNome;
+    }
+
+    public String getSobrenome() {
+        return sobrenome;
+    }
+
+    public void setSobrenome(String sobrenome) {
+        this.sobrenome = sobrenome;
+    }
+
+    public Set<String> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(Set<String> roles) {
+        this.roles = roles;
+    }
+
+    public Set<String> getPermissoes() {
+        return permissoes;
+    }
+
+    public void setPermissoes(Set<String> permissoes) {
+        this.permissoes = permissoes;
+    }
+
+    public boolean isAtivo() {
+        return ativo;
+    }
+
+    public void setAtivo(boolean ativo) {
+        this.ativo = ativo;
+    }
+
+    public boolean isEmailVerificado() {
+        return emailVerificado;
+    }
+
+    public void setEmailVerificado(boolean emailVerificado) {
+        this.emailVerificado = emailVerificado;
+    }
+
+    public LocalDateTime getUltimoLogin() {
+        return ultimoLogin;
+    }
+
+    public void setUltimoLogin(LocalDateTime ultimoLogin) {
+        this.ultimoLogin = ultimoLogin;
+    }
+
+    public int getTentativasLoginFalidas() {
+        return tentativasLoginFalidas;
+    }
+
+    public void setTentativasLoginFalidas(int tentativasLoginFalidas) {
+        this.tentativasLoginFalidas = tentativasLoginFalidas;
+    }
+
+    public boolean isContaBloqueada() {
+        return contaBloqueada;
+    }
+
+    public void setContaBloqueada(boolean contaBloqueada) {
+        this.contaBloqueada = contaBloqueada;
+    }
+
+    public LocalDateTime getDataBloqueio() {
+        return dataBloqueio;
+    }
+
+    public void setDataBloqueio(LocalDateTime dataBloqueio) {
+        this.dataBloqueio = dataBloqueio;
+    }
+
+    public LocalDateTime getDataCriacao() {
+        return dataCriacao;
+    }
+
+    public void setDataCriacao(LocalDateTime dataCriacao) {
+        this.dataCriacao = dataCriacao;
+    }
+
+    public LocalDateTime getDataAtualizacao() {
+        return dataAtualizacao;
+    }
+
+    public void setDataAtualizacao(LocalDateTime dataAtualizacao) {
+        this.dataAtualizacao = dataAtualizacao;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UsuarioDTO that = (UsuarioDTO) o;
+        return ativo == that.ativo &&
+               emailVerificado == that.emailVerificado &&
+               tentativasLoginFalidas == that.tentativasLoginFalidas &&
+               contaBloqueada == that.contaBloqueada &&
+               Objects.equals(id, that.id) &&
+               Objects.equals(email, that.email) &&
+               Objects.equals(username, that.username) &&
+               Objects.equals(password, that.password) &&
+               Objects.equals(primeiroNome, that.primeiroNome) &&
+               Objects.equals(sobrenome, that.sobrenome) &&
+               Objects.equals(roles, that.roles) &&
+               Objects.equals(permissoes, that.permissoes) &&
+               Objects.equals(ultimoLogin, that.ultimoLogin) &&
+               Objects.equals(dataBloqueio, that.dataBloqueio) &&
+               Objects.equals(dataCriacao, that.dataCriacao) &&
+               Objects.equals(dataAtualizacao, that.dataAtualizacao);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, email, username, password, primeiroNome, sobrenome, roles, permissoes, ativo,
+                            emailVerificado, ultimoLogin, tentativasLoginFalidas, contaBloqueada, dataBloqueio,
+                            dataCriacao, dataAtualizacao);
+    }
+
+    @Override
+    public String toString() {
+        return "UsuarioDTO{" +
+               "id=" + id +
+               ", email='" + email + "'" +
+               ", username='" + username + "'" +
+               ", primeiroNome='" + primeiroNome + "'" +
+               ", sobrenome='" + sobrenome + "'" +
+               ", roles=" + roles +
+               ", permissoes=" + permissoes +
+               ", ativo=" + ativo +
+               ", emailVerificado=" + emailVerificado +
+               ", ultimoLogin=" + ultimoLogin +
+               ", tentativasLoginFalidas=" + tentativasLoginFalidas +
+               ", contaBloqueada=" + contaBloqueada +
+               ", dataBloqueio=" + dataBloqueio +
+               ", dataCriacao=" + dataCriacao +
+               ", dataAtualizacao=" + dataAtualizacao +
+               '}';
     }
 }

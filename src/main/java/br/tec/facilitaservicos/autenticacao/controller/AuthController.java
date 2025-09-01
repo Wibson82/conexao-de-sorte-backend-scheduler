@@ -53,7 +53,7 @@ import reactor.core.publisher.Mono;
  * ============================================================================
  */
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/rest/v1/auth")
 @Tag(name = "Authentication", description = "Endpoints de autenticação OAuth2/OpenID Connect")
 public class AuthController {
 

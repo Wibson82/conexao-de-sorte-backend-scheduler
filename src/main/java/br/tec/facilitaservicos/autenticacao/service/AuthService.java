@@ -1,11 +1,11 @@
 package br.tec.facilitaservicos.autenticacao.service;
 
+import br.tec.facilitaservicos.autenticacao.client.UserServiceClient;
 import br.tec.facilitaservicos.autenticacao.dto.*;
 import br.tec.facilitaservicos.autenticacao.entity.RefreshToken;
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
 import br.tec.facilitaservicos.autenticacao.exception.AuthenticationException;
 import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
-import br.tec.facilitaservicos.autenticacao.repository.UsuarioRepository;
+import br.tec.facilitaservicos.autenticacao.service.UserValidationService;
 import com.nimbusds.jwt.JWTClaimsSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,20 +29,23 @@ public class AuthService {
     
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     
-    private final UsuarioRepository usuarioRepository;
+    private final UserServiceClient userServiceClient;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom;
+    private final UserValidationService userValidationService;
     
-    public AuthService(UsuarioRepository usuarioRepository,
+    public AuthService(UserServiceClient userServiceClient,
                       RefreshTokenRepository refreshTokenRepository,
                       JwtService jwtService,
-                      PasswordEncoder passwordEncoder) {
-        this.usuarioRepository = usuarioRepository;
+                      PasswordEncoder passwordEncoder,
+                      UserValidationService userValidationService) {
+        this.userServiceClient = userServiceClient;
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
+        this.userValidationService = userValidationService;
         this.secureRandom = new SecureRandom();
     }
     
@@ -52,7 +55,7 @@ public class AuthService {
     public Mono<RespostaTokenDTO> authenticate(RequisicaoLoginDTO loginRequest, String clientIp, String userAgent) {
         logger.debug("Iniciando autenticação para usuário: {}", loginRequest.usuario());
         
-        return usuarioRepository.findByEmailOrNomeUsuario(loginRequest.usuario())
+        return userServiceClient.findByEmailOrNomeUsuario(loginRequest.usuario())
             .switchIfEmpty(Mono.error(new AuthenticationException("Usuário não encontrado")))
             .flatMap(usuario -> validateUserAndGenerateTokens(usuario, loginRequest.senha(), clientIp, userAgent))
             .doOnSuccess(response -> logger.info("Autenticação concluída com sucesso"))
@@ -72,7 +75,7 @@ public class AuthService {
             .filter(refreshToken -> refreshToken.isValido())
             .switchIfEmpty(Mono.error(new AuthenticationException("Refresh token expirado")))
             .flatMap(refreshToken -> 
-                usuarioRepository.findById(refreshToken.getUsuarioId())
+                userServiceClient.findById(refreshToken.getUsuarioId())
                     .flatMap(usuario -> renewTokens(usuario, refreshToken, clientIp, userAgent))
             )
             .doOnSuccess(response -> logger.info("Token renovado com sucesso"))
@@ -108,46 +111,26 @@ public class AuthService {
      * Health check do serviço.
      */
     public Mono<Boolean> healthCheck() {
-        return usuarioRepository.countUsuariosAtivos()
+        return userServiceClient.countUsuariosAtivos()
             .map(count -> count >= 0)
             .onErrorReturn(false);
     }
     
     // Métodos auxiliares privados
     
-    private Mono<RespostaTokenDTO> validateUserAndGenerateTokens(Usuario usuario, String senha, 
+    private Mono<RespostaTokenDTO> validateUserAndGenerateTokens(UsuarioDTO usuario, String senha, 
                                                                  String clientIp, String userAgent) {
-        return Mono.fromCallable(() -> {
-            // Validar senha
-            if (!passwordEncoder.matches(senha, usuario.getSenhaHash())) {
-                throw new AuthenticationException("Senha inválida");
-            }
-            
-            // Validar estado do usuário
-            if (!usuario.podeLogar()) {
-                if (usuario.isContaBloqueada()) {
-                    throw new AuthenticationException("Conta bloqueada");
-                }
-                if (!usuario.isAtivo()) {
-                    throw new AuthenticationException("Conta inativa");
-                }
-                if (!usuario.isEmailVerificado()) {
-                    throw new AuthenticationException("Email não verificado");
-                }
-            }
-            
-            return usuario;
-        })
+        return userValidationService.validateUser(usuario, senha)
         .subscribeOn(Schedulers.boundedElastic())
         .flatMap(validatedUser -> generateTokenPair(validatedUser, clientIp, userAgent))
         .flatMap(tokenResponse -> 
             // Resetar tentativas falidas após sucesso
-            usuarioRepository.updateTentativasLoginFalidas(usuario.getId(), 0)
+            userServiceClient.updateTentativasLoginFalidas(usuario.getId(), 0)
                 .thenReturn(tokenResponse)
         );
     }
     
-    private Mono<RespostaTokenDTO> generateTokenPair(Usuario usuario, String clientIp, String userAgent) {
+    private Mono<RespostaTokenDTO> generateTokenPair(UsuarioDTO usuario, String clientIp, String userAgent) {
         return jwtService.generateAccessToken(usuario)
             .flatMap(accessToken -> {
                 String refreshToken = generateSecureToken();
@@ -171,7 +154,7 @@ public class AuthService {
             });
     }
     
-    private Mono<RespostaTokenDTO> renewTokens(Usuario usuario, RefreshToken oldToken, 
+    private Mono<RespostaTokenDTO> renewTokens(UsuarioDTO usuario, RefreshToken oldToken, 
                                               String clientIp, String userAgent) {
         return jwtService.generateAccessToken(usuario)
             .flatMap(accessToken -> {

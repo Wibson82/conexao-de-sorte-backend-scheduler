@@ -24,7 +24,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
-import br.tec.facilitaservicos.autenticacao.entity.Usuario;
+import br.tec.facilitaservicos.autenticacao.dto.UsuarioDTO;
 import br.tec.facilitaservicos.autenticacao.exception.TokenException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -56,7 +56,7 @@ public class JwtService {
     /**
      * Gera um access token JWT para o usuário.
      */
-    public Mono<String> generateAccessToken(Usuario usuario) {
+    public Mono<String> generateAccessToken(UsuarioDTO usuario) {
         logger.debug("Gerando access token para usuário: {}", usuario.getId());
         
         return keyVaultService.getPrivateKey()
@@ -105,7 +105,7 @@ public class JwtService {
         }).subscribeOn(Schedulers.boundedElastic());
     }
     
-    /**
+        /**
      * Gera JWK Set para o endpoint público.
      */
     public Mono<Map<String, Object>> generateJwkSet() {
@@ -142,7 +142,7 @@ public class JwtService {
     
     // Métodos privados auxiliares
     
-    private String createAccessToken(Usuario usuario, RSAPrivateKey privateKey, String keyId) 
+    private String createAccessToken(UsuarioDTO usuario, RSAPrivateKey privateKey, String keyId) 
             throws JOSEException {
         
         Instant now = Instant.now();
@@ -157,11 +157,11 @@ public class JwtService {
             .expirationTime(Date.from(expiration))
             .notBeforeTime(Date.from(now))
             .claim("email", usuario.getEmail())
-            .claim("username", usuario.getNomeUsuario())
+            .claim("username", usuario.getUsername())
             .claim("active", usuario.isAtivo())
             .claim("email_verified", usuario.isEmailVerificado())
-            .claim("authorities", List.of("ROLE_USER")) // Permissões padrão
-            .claim("scope", "read write")
+            .claim("authorities", usuario.getRoles())
+            .claim("scope", String.join(" ", usuario.getPermissoes()))
             .build();
         
         // Header do JWT
