@@ -8,41 +8,98 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+/**
+ * DTO para informações de usuário no contexto de autenticação.
+ * 
+ * Utilizado internamente pelo microserviço de autenticação para
+ * gerenciar dados de usuários durante processos de login, autorização
+ * e validação de sessões.
+ * 
+ * Principais casos de uso:
+ * - Autenticação e autorização de usuários
+ * - Controle de tentativas de login e bloqueios
+ * - Validação de permissões e roles
+ * - Rastreamento de atividade de login
+ * 
+ * Restrições de segurança:
+ * - Campo password nunca deve ser exposto em respostas de API
+ * - Informações de bloqueio são críticas para segurança
+ * - Tentativas de login falhadas são monitoradas para detecção de ataques
+ * 
+ * Relacionamentos:
+ * - Integra com o microserviço de usuários para dados básicos
+ * - Conecta com sistema de auditoria para logs de acesso
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Schema(description = "Data Transfer Object for User information")
+@Schema(description = "Informações de usuário para processo de autenticação e autorização")
 public class UsuarioDTO {
-    @Schema(description = "Unique identifier of the user", example = "1")
+    
+    @Schema(description = "Identificador único do usuário", 
+            example = "12345", 
+            required = true)
     private Long id;
-    @Schema(description = "Email of the user", example = "user@example.com")
+    
+    @Schema(description = "Email do usuário usado como identificador principal", 
+            example = "joao.silva@exemplo.com")
     private String email;
-    @Schema(description = "Username of the user", example = "user")
+    
+    @Schema(description = "Nome de usuário alternativo para login", 
+            example = "joao.silva")
     private String username;
-    @Schema(description = "Password of the user", hidden = true)
-    private String password; // Only for internal use, never expose
-    @Schema(description = "First name of the user", example = "John")
+    
+    @Schema(description = "Senha criptografada do usuário", 
+            hidden = true,
+            accessMode = Schema.AccessMode.WRITE_ONLY)
+    private String password; // Apenas para uso interno, nunca expor
+    
+    @Schema(description = "Primeiro nome do usuário", 
+            example = "João")
     private String primeiroNome;
-    @Schema(description = "Last name of the user", example = "Doe")
+    
+    @Schema(description = "Sobrenome do usuário", 
+            example = "Silva")
     private String sobrenome;
-    @Schema(description = "Set of roles assigned to the user", example = "[\"USER\", \"ADMIN\"]")
+    
+    @Schema(description = "Conjunto de papéis/roles atribuídos ao usuário", 
+            example = "[\"USER\", \"MODERATOR\", \"ADMIN\"]")
     private Set<String> roles;
-    @Schema(description = "Set of permissions assigned to the user", example = "[\"READ\", \"WRITE\"]")
+    
+    @Schema(description = "Conjunto de permissões específicas do usuário", 
+            example = "[\"READ_MESSAGES\", \"WRITE_MESSAGES\", \"DELETE_OWN_MESSAGES\"]")
     private Set<String> permissoes;
-    @Schema(description = "Indicates if the user is active", example = "true")
+    
+    @Schema(description = "Indica se a conta do usuário está ativa", 
+            example = "true")
     private boolean ativo;
-    @Schema(description = "Indicates if the user's email is verified", example = "true")
+    
+    @Schema(description = "Indica se o email do usuário foi verificado", 
+            example = "true")
     private boolean emailVerificado;
-    @Schema(description = "Last login date and time", example = "2025-01-01T12:00:00")
+    
+    @Schema(description = "Data e hora do último login realizado", 
+            example = "2025-09-01T10:30:00")
     private LocalDateTime ultimoLogin;
-    @Schema(description = "Number of failed login attempts", example = "0")
+    
+    @Schema(description = "Número de tentativas consecutivas de login com falha", 
+            example = "0",
+            minimum = "0")
     private int tentativasLoginFalidas;
-    @Schema(description = "Indicates if the user's account is locked", example = "false")
+    
+    @Schema(description = "Indica se a conta está temporariamente bloqueada", 
+            example = "false")
     private boolean contaBloqueada;
-    @Schema(description = "Date and time when the account was locked", example = "2025-01-01T12:00:00")
+    
+    @Schema(description = "Data e hora em que a conta foi bloqueada", 
+            example = "2025-09-01T15:45:00")
     private LocalDateTime dataBloqueio;
-    @Schema(description = "Date and time of account creation", example = "2025-01-01T12:00:00")
+    
+    @Schema(description = "Data e hora de criação da conta", 
+            example = "2024-12-15T09:20:00")
     private LocalDateTime dataCriacao;
-    @Schema(description = "Date and time of last account update", example = "2025-01-01T12:00:00")
+    
+    @Schema(description = "Data e hora da última atualização dos dados", 
+            example = "2025-08-30T16:30:00")
     private LocalDateTime dataAtualizacao;
 
     // Construtor padrão (NoArgsConstructor)

@@ -1,7 +1,8 @@
 package br.tec.facilitaservicos.autenticacao.config;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.binder.cache.RedisCacheMetrics;
+import org.springframework.boot.actuate.metrics.cache.RedisCacheMetrics;
+import io.micrometer.core.instrument.Tag;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
@@ -41,9 +42,12 @@ public class CacheConfig {
         
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(defaultTtl)
-                .disableCachingNullValues(!cacheNullValues)
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
+        
+        if (!cacheNullValues) {
+            defaultConfig = defaultConfig.disableCachingNullValues();
+        }
 
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
         
@@ -79,7 +83,12 @@ public class CacheConfig {
                 .build();
 
         // Métricas críticas para monitoramento de segurança
-        RedisCacheMetrics.monitor(meterRegistry, cacheManager, "auth.cache");
+        // Registrar métricas para cada cache individualmente
+        cacheManager.getCacheNames().forEach(cacheName -> {
+            var cache = (org.springframework.data.redis.cache.RedisCache) cacheManager.getCache(cacheName).getNativeCache();
+            new RedisCacheMetrics(cache, java.util.Collections.singletonList(Tag.of("cache", cacheName)))
+                    .bindTo(meterRegistry);
+        });
 
         return cacheManager;
     }
