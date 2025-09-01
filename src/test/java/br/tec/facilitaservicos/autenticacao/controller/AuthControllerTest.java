@@ -10,6 +10,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -24,6 +26,7 @@ import br.tec.facilitaservicos.autenticacao.service.AuthService;
 import reactor.core.publisher.Mono;
 
 @WebFluxTest(AuthController.class)
+@EnableAutoConfiguration(exclude = {R2dbcAutoConfiguration.class})
 @DisplayName("Testes do AuthController")
 class AuthControllerTest {
 

@@ -5,19 +5,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.test.context.TestPropertySource;
 
 import io.micrometer.core.instrument.MeterRegistry;
 
-@SpringBootTest
-@TestPropertySource(properties = {
-    "spring.cache.type=redis",
-    "spring.cache.redis.time-to-live=PT30M",
-    "spring.cache.redis.cache-null-values=false"
-})
 @DisplayName("Testes da CacheConfig")
 class CacheConfigTest {
 
