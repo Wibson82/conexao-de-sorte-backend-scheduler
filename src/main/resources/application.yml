@@ -12,21 +12,37 @@ spring:
   main:
     allow-bean-definition-overriding: true
     
-  # Cache reativo (Redis)
+  # Cache reativo (Redis) - Configuração crítica para autenticação
   data:
     redis:
       host: ${conexao-de-sorte-redis-host:localhost}
       port: ${conexao-de-sorte-redis-port:6379}
       password: ${conexao-de-sorte-redis-password:}
       database: ${conexao-de-sorte-redis-database:0}
-      timeout: 2000ms
+      timeout: 3000ms
+      connect-timeout: 10000ms
       lettuce:
         pool:
           enabled: true
-          max-active: 20
-          max-idle: 8
-          min-idle: 2
-          max-wait: 3000ms
+          max-active: 30
+          max-idle: 15
+          min-idle: 8
+          max-wait: 5000ms
+          time-between-eviction-runs: 30s
+        cluster:
+          refresh:
+            adaptive: true
+            period: 60s
+
+  # Cache Configuration - Segurança crítica
+  cache:
+    type: redis
+    cache-names: rsa-private-key, rsa-public-key, key-id, valid-tokens, jwks
+    redis:
+      time-to-live: PT30M # TTL padrão para segurança
+      cache-null-values: false
+      key-prefix: "auth:"
+      use-key-prefix: true
           
   # Azure Key Vault with manual configuration (disabled automatic)
   cloud:
