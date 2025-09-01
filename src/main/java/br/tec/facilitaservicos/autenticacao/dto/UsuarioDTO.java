@@ -6,25 +6,43 @@ import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "Data Transfer Object for User information")
 public class UsuarioDTO {
+    @Schema(description = "Unique identifier of the user", example = "1")
     private Long id;
+    @Schema(description = "Email of the user", example = "user@example.com")
     private String email;
+    @Schema(description = "Username of the user", example = "user")
     private String username;
+    @Schema(description = "Password of the user", hidden = true)
     private String password; // Only for internal use, never expose
+    @Schema(description = "First name of the user", example = "John")
     private String primeiroNome;
+    @Schema(description = "Last name of the user", example = "Doe")
     private String sobrenome;
+    @Schema(description = "Set of roles assigned to the user", example = "[\"USER\", \"ADMIN\"]")
     private Set<String> roles;
+    @Schema(description = "Set of permissions assigned to the user", example = "[\"READ\", \"WRITE\"]")
     private Set<String> permissoes;
+    @Schema(description = "Indicates if the user is active", example = "true")
     private boolean ativo;
+    @Schema(description = "Indicates if the user's email is verified", example = "true")
     private boolean emailVerificado;
+    @Schema(description = "Last login date and time", example = "2025-01-01T12:00:00")
     private LocalDateTime ultimoLogin;
+    @Schema(description = "Number of failed login attempts", example = "0")
     private int tentativasLoginFalidas;
+    @Schema(description = "Indicates if the user's account is locked", example = "false")
     private boolean contaBloqueada;
+    @Schema(description = "Date and time when the account was locked", example = "2025-01-01T12:00:00")
     private LocalDateTime dataBloqueio;
+    @Schema(description = "Date and time of account creation", example = "2025-01-01T12:00:00")
     private LocalDateTime dataCriacao;
+    @Schema(description = "Date and time of last account update", example = "2025-01-01T12:00:00")
     private LocalDateTime dataAtualizacao;
 
     // Construtor padrão (NoArgsConstructor)
