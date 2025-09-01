@@ -34,10 +34,19 @@
         
         <!-- Testcontainers -->
         <testcontainers.version>1.21.3</testcontainers.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version> <!-- Adicionado para compatibilidade com Spring Boot 3.5.5 -->
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Spring Cloud BOM para compatibilidade -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <!-- Azure SDK BOM -->
             <dependency>
                 <groupId>com.azure</groupId>
@@ -124,7 +133,6 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-            <version>3.1.3</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.retry</groupId>
@@ -184,7 +192,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-r2dbc</artifactId>
-            <version>3.5.5</version>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -193,7 +200,6 @@
         <dependency>
             <groupId>io.asyncer</groupId>
             <artifactId>r2dbc-mysql</artifactId>
-            <version>1.4.1</version>
         </dependency>
         <dependency>
             <groupId>io.r2dbc</groupId>
