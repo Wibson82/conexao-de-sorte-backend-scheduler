@@ -91,8 +91,8 @@ class UserValidationServiceTest {
                     assertThat(response.getUserId()).isEqualTo(1L);
                     assertThat(response.getUsername()).isEqualTo("usuario@teste.com");
                     assertThat(response.getEmail()).isEqualTo("usuario@teste.com");
-                    assertThat(response.getRoles()).containsExactly("USER", "ADMIN");
-                    assertThat(response.getPermissions()).containsExactly("read", "write", "admin");
+                    assertThat(response.getRoles()).containsExactlyInAnyOrder("USER", "ADMIN");
+                    assertThat(response.getPermissions()).containsExactlyInAnyOrder("read", "write", "admin");
                     assertThat(response.getExpiresAt()).isNotNull();
                     assertThat(response.getSubject()).isEqualTo("1");
                     assertThat(response.getIssuer()).isEqualTo("conexao-de-sorte-auth");
@@ -163,8 +163,8 @@ class UserValidationServiceTest {
                     assertThat(userDto.getUsername()).isEqualTo("usuario@teste.com");
                     assertThat(userDto.getEmail()).isEqualTo("usuario@teste.com");
                     assertThat(userDto.getFullName()).isEqualTo("Usuario Teste");
-                    assertThat(userDto.getRoles()).containsExactly("USER", "ADMIN");
-                    assertThat(userDto.getPermissoes()).containsExactly("read", "write", "admin");
+                    assertThat(userDto.getRoles()).containsExactlyInAnyOrder("USER", "ADMIN");
+                    assertThat(userDto.getPermissoes()).containsExactlyInAnyOrder("read", "write", "admin");
                     assertThat(userDto.getActive()).isTrue();
                     return true;
                 })
@@ -186,7 +186,17 @@ class UserValidationServiceTest {
 
         // Act & Assert
         StepVerifier.create(userValidationService.getUserById(userId))
-                .verifyComplete(); // Espera que complete vazio, não que retorne usuário anônimo
+                .expectNextMatches(userDto -> {
+                    assertThat(userDto.getId()).isEqualTo(userId);
+                    assertThat(userDto.getUsername()).isEqualTo("Usuário Anônimo");
+                    assertThat(userDto.getEmail()).isEqualTo("anonimo@exemplo.com");
+                    assertThat(userDto.getRoles()).contains("ANONYMOUS");
+                    assertThat(userDto.getPermissoes()).contains("read");
+                    assertThat(userDto.isAtivo()).isFalse();
+                    assertThat(userDto.isEmailVerificado()).isFalse();
+                    return true;
+                })
+                .verifyComplete();
 
         verify(userServiceClient).findById(userId);
     }

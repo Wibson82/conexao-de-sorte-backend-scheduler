@@ -50,6 +50,9 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private UserValidationService userValidationService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -82,8 +85,8 @@ class AuthServiceTest {
         
         when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
-        when(passwordEncoder.matches(anyString(), anyString()))
-                .thenReturn(true);
+        when(userValidationService.validateUser(any(UsuarioDTO.class), anyString()))
+                .thenReturn(Mono.just(usuarioValido));
         when(jwtService.generateAccessToken(any(UsuarioDTO.class)))
                 .thenReturn(Mono.just(accessToken));
         // Refresh token é gerado internamente no AuthService
@@ -105,7 +108,7 @@ class AuthServiceTest {
 
         // Verificações adicionais
         verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
-        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verify(userValidationService).validateUser(usuarioValido, "senha123");
         verify(jwtService).generateAccessToken(usuarioValido);
         verify(userServiceClient).updateTentativasLoginFalidas(usuarioValido.getId(), 0);
         verify(refreshTokenRepository).save(any(RefreshToken.class));
@@ -133,8 +136,8 @@ class AuthServiceTest {
         // Arrange
         when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
-        when(passwordEncoder.matches(anyString(), anyString()))
-                .thenReturn(false);
+        when(userValidationService.validateUser(any(UsuarioDTO.class), anyString()))
+                .thenReturn(Mono.error(new AuthenticationException("Senha inválida")));
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -142,7 +145,7 @@ class AuthServiceTest {
                 .verify();
 
         verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
-        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verify(userValidationService).validateUser(usuarioValido, "senha123");
         verifyNoInteractions(jwtService);
     }
 
@@ -155,8 +158,8 @@ class AuthServiceTest {
 
         when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
-        when(passwordEncoder.matches(anyString(), anyString()))
-                .thenReturn(true);
+        when(userValidationService.validateUser(any(UsuarioDTO.class), anyString()))
+                .thenReturn(Mono.error(new AuthenticationException("Conta bloqueada")));
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -164,7 +167,7 @@ class AuthServiceTest {
                 .verify();
 
         verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
-        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verify(userValidationService).validateUser(usuarioValido, "senha123");
         verifyNoInteractions(jwtService);
     }
 
@@ -176,8 +179,8 @@ class AuthServiceTest {
 
         when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
-        when(passwordEncoder.matches(anyString(), anyString()))
-                .thenReturn(true);
+        when(userValidationService.validateUser(any(UsuarioDTO.class), anyString()))
+                .thenReturn(Mono.error(new AuthenticationException("Conta inativa")));
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -185,7 +188,7 @@ class AuthServiceTest {
                 .verify();
 
         verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
-        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verify(userValidationService).validateUser(usuarioValido, "senha123");
         verifyNoInteractions(jwtService);
     }
 
@@ -197,8 +200,8 @@ class AuthServiceTest {
 
         when(userServiceClient.findByEmailOrNomeUsuario(anyString()))
                 .thenReturn(Mono.just(usuarioValido));
-        when(passwordEncoder.matches(anyString(), anyString()))
-                .thenReturn(true);
+        when(userValidationService.validateUser(any(UsuarioDTO.class), anyString()))
+                .thenReturn(Mono.error(new AuthenticationException("Email não verificado")));
 
         // Act & Assert
         StepVerifier.create(authService.authenticate(requisicaoLoginValida, "192.168.1.1", "test-agent"))
@@ -206,7 +209,7 @@ class AuthServiceTest {
                 .verify();
 
         verify(userServiceClient).findByEmailOrNomeUsuario("usuario@teste.com");
-        verify(passwordEncoder).matches("senha123", "$2a$10$hashSenha");
+        verify(userValidationService).validateUser(usuarioValido, "senha123");
         verifyNoInteractions(jwtService);
     }
 

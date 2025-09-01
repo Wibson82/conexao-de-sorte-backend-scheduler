@@ -5,7 +5,6 @@ import br.tec.facilitaservicos.autenticacao.dto.*;
 import br.tec.facilitaservicos.autenticacao.entity.RefreshToken;
 import br.tec.facilitaservicos.autenticacao.exception.AuthenticationException;
 import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
-import br.tec.facilitaservicos.autenticacao.service.UserValidationService;
 import com.nimbusds.jwt.JWTClaimsSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
