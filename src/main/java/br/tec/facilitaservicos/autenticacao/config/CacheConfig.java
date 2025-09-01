@@ -39,6 +39,13 @@ public class CacheConfig {
     @Primary
     @ConditionalOnProperty(name = "spring.cache.type", havingValue = "redis")
     public CacheManager authCacheManager(LettuceConnectionFactory connectionFactory, MeterRegistry meterRegistry) {
+        return createRedisCacheManager(connectionFactory, meterRegistry);
+    }
+
+    /**
+     * Método público para criar o CacheManager Redis - usado principalmente para testes
+     */
+    public CacheManager createRedisCacheManager(LettuceConnectionFactory connectionFactory, MeterRegistry meterRegistry) {
         
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(defaultTtl)
