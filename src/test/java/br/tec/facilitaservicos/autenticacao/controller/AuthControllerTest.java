@@ -34,8 +34,14 @@ import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
 import br.tec.facilitaservicos.autenticacao.service.AuthService;
 import reactor.core.publisher.Mono;
 
-@WebFluxTest(AuthController.class)
-@Import({WebFluxTestConfiguration.class, AuthControllerTest.TestConfig.class})
+@WebFluxTest(controllers = AuthController.class, excludeAutoConfiguration = {
+    org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.data.r2dbc.R2dbcDataAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.data.r2dbc.R2dbcRepositoriesAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration.class
+})
+@Import({AuthControllerTest.TestConfig.class})
 @DisplayName("Testes do AuthController")
 class AuthControllerTest {
 
@@ -73,6 +79,8 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
+        reset(authService, refreshTokenRepository);
+        
         validLoginRequest = new RequisicaoLoginDTO("user@test.com", "password123");
         validRefreshRequest = new RequisicaoRefreshDTO("valid_refresh_token");
         validIntrospectionRequest = new RequisicaoIntrospeccaoDTO("valid_access_token", "access_token");
@@ -92,10 +100,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/v1/auth/token - Login com sucesso")
     void testLoginSuccess() {
-        // Resetar o mock antes de configurar
-        reset(authService);
-        
-        when(authService.authenticate(eq(validLoginRequest), anyString(), anyString()))
+        when(authService.authenticate(any(RequisicaoLoginDTO.class), anyString(), anyString()))
             .thenReturn(Mono.just(tokenResponse));
 
         webTestClient.post()

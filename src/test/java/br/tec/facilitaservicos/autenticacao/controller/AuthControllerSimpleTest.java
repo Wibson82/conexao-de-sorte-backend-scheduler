@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.reset;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,7 +26,10 @@ import reactor.core.publisher.Mono;
 
 @WebFluxTest(controllers = AuthController.class, excludeAutoConfiguration = {
     org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration.class,
-    org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration.class
+    org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.data.r2dbc.R2dbcDataAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.data.r2dbc.R2dbcRepositoriesAutoConfiguration.class,
+    org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration.class
 })
 @DisplayName("Teste simples do AuthController")
 class AuthControllerSimpleTest {
@@ -50,6 +54,8 @@ class AuthControllerSimpleTest {
 
     @BeforeEach
     void setUp() {
+        reset(authService, refreshTokenRepository, r2dbcEntityTemplate, r2dbcMappingContext);
+        
         validLoginRequest = new RequisicaoLoginDTO("user@test.com", "password123");
         tokenResponse = RespostaTokenDTO.of(
             "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyQHRlc3QuY29tIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjE2MDAwMDM2MDB9.signature", 
