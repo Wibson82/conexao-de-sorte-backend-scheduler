@@ -273,7 +273,7 @@ resilience4j:
 spring:
   config:
     activate:
-      on-profile: dev
+      on-profile: prod
       
 logging:
   level:
