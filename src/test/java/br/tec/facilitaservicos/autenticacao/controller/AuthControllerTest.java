@@ -21,7 +21,7 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 
 import br.tec.facilitaservicos.autenticacao.config.WebFluxTestConfiguration;
 import org.springframework.http.MediaType;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import br.tec.facilitaservicos.autenticacao.dto.RequisicaoIntrospeccaoDTO;
@@ -42,10 +42,10 @@ class AuthControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private AuthService authService;
 
-    @MockBean
+    @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
     
     @Configuration

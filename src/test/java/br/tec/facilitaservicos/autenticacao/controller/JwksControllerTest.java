@@ -15,7 +15,7 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 
 import br.tec.facilitaservicos.autenticacao.config.WebFluxTestConfiguration;
 import org.springframework.http.MediaType;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import br.tec.facilitaservicos.autenticacao.repository.RefreshTokenRepository;
@@ -30,10 +30,10 @@ class JwksControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private JwtService jwtService;
 
-    @MockBean
+    @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
     
     @Configuration
@@ -41,7 +41,7 @@ class JwksControllerTest {
         @Bean
         public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
             return http
-                .csrf().disable()
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
                 .build();
         }
