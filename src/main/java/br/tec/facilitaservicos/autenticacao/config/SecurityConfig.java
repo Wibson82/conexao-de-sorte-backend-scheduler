@@ -30,20 +30,25 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeExchange(exchanges -> exchanges
-                // Endpoints públicos
+                // Endpoints públicos - incluindo health checks para load balancer
                 .pathMatchers(
                     "/auth/**",
                     "/.well-known/**", 
                     "/oauth2/jwks**",
                     "/actuator/health**",
+                    "/actuator/health/liveness**",
+                    "/actuator/health/readiness**",
                     "/actuator/info",
+                    "/actuator/prometheus",
                     "/v3/api-docs**",
                     "/swagger-ui**",
                     "/swagger-resources/**",
                     "/webjars/**"
                 ).permitAll()
-                // Endpoints do Actuator (requer autenticação)
-                .pathMatchers("/actuator/**").authenticated()
+                // Endpoints do Actuator sensíveis (requer autenticação)
+                .pathMatchers("/actuator/metrics/**", "/actuator/env**", "/actuator/configprops**").authenticated()
+                // Outros endpoints do actuator são públicos para monitoramento
+                .pathMatchers("/actuator/**").permitAll()
                 // Outros endpoints requerem autenticação
                 .anyExchange().authenticated()
             )
@@ -59,12 +64,18 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // Origens permitidas (configurável via environment)
-        configuration.setAllowedOriginPatterns(List.of(
-            "http://localhost:*",
-            "https://*.conexaodesorte.com",
-            "https://*.facilitaservicos.com.br"
-        ));
+        // Origens permitidas baseadas em variáveis de ambiente
+        String allowedOrigins = System.getenv("conexao-de-sorte-cors-allowed-origins");
+        if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
+            configuration.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
+        } else {
+            // Fallback para desenvolvimento
+            configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",
+                "https://*.conexaodesorte.com",
+                "https://*.facilitaservicos.com.br"
+            ));
+        }
         
         // Métodos HTTP permitidos
         configuration.setAllowedMethods(List.of(
@@ -92,7 +103,9 @@ public class SecurityConfig {
             "X-Rate-Limit-Reset"
         ));
         
-        configuration.setAllowCredentials(true);
+        // Allow credentials baseado em variável de ambiente
+        String allowCredentials = System.getenv("conexao-de-sorte-cors-allow-credentials");
+        configuration.setAllowCredentials(Boolean.parseBoolean(allowCredentials != null ? allowCredentials : "true"));
         configuration.setMaxAge(3600L); // 1 hora
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -44,12 +44,17 @@ spring:
       key-prefix: "auth:"
       use-key-prefix: true
           
-  # Azure Key Vault with manual configuration (disabled automatic)
+  # Azure Key Vault with manual configuration
   cloud:
     azure:
       keyvault:
         secret:
-          enabled: false
+          enabled: ${AZURE_KEYVAULT_ENABLED:true}
+          endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
+      profile:
+        tenant-id: ${AZURE_TENANT_ID:}
+        subscription-id: ${AZURE_SUBSCRIPTION_ID:}
+        client-id: ${AZURE_CLIENT_ID:}
   
   # Configtree secret management
   config:
@@ -152,13 +157,21 @@ jwt:
   
   # Azure Key Vault keys - using secure naming
   key-vault:
+    enabled: ${JWT_KEYVAULT_ENABLED:true}
     private-key-name: ${JWT_PRIVATE_KEY_NAME:conexao-de-sorte-jwt-signing-key}
     public-key-name: ${JWT_PUBLIC_KEY_NAME:conexao-de-sorte-jwt-verification-key}
     key-id-name: ${JWT_KEY_ID_NAME:conexao-de-sorte-jwt-key-id}
     secret-name: ${JWT_SECRET_NAME:conexao-de-sorte-jwt-secret}
     
+  # Fallback keys for development/testing (never use in production)
+  fallback:
+    private-key: ${conexao-de-sorte-jwt-privateKey:}
+    public-key: ${conexao-de-sorte-jwt-publicKey:}
+    key-id: ${conexao-de-sorte-jwt-key-id:}
+    secret: ${conexao-de-sorte-jwt-secret:}
+    
   # Issuer e Audience
-  issuer: ${JWT_ISSUER:https://auth.conexaodesorte.com}
+  issuer: ${conexao-de-sorte-jwt-issuer:https://auth.conexaodesorte.com}
   audience: ${JWT_AUDIENCE:conexao-de-sorte}
   
   # JWKS cache
@@ -172,10 +185,10 @@ jwt:
 
 # CORS Configuration
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,https://app.conexaodesorte.com}
+  allowed-origins: ${conexao-de-sorte-cors-allowed-origins:http://localhost:3000,https://app.conexaodesorte.com}
   allowed-methods: GET,POST,PUT,DELETE,OPTIONS
   allowed-headers: "*"
-  allow-credentials: true
+  allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
   max-age: 3600
 
 # Rate Limiting
@@ -305,10 +318,27 @@ spring:
     activate:
       on-profile: prod
       
+  # Habilitar Key Vault em produção
+  cloud:
+    azure:
+      keyvault:
+        secret:
+          enabled: ${AZURE_KEYVAULT_ENABLED:true}
+          
 server:
   port: 8081
   ssl:
-    enabled: ${SSL_ENABLED:false}
+    enabled: ${conexao-de-sorte-ssl-enabled:true}
+    key-store: ${conexao-de-sorte-ssl-keystore-path:}
+    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
+    key-store-type: PKCS12
+  
+  # Desabilitar informações de erro em produção
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
     
 management:
   endpoints:
@@ -318,11 +348,28 @@ management:
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
+  
+  # Habilitar health checks sem autenticação para load balancer      
+  health:
+    readiness-state:
+      enabled: true
+    liveness-state:
+      enabled: true
+      
+jwt:
+  key-vault:
+    enabled: ${JWT_KEYVAULT_ENABLED:true}
       
 logging:
   level:
     br.tec.facilitaservicos.autenticacao: INFO
     root: WARN
+    org.springframework.security: WARN
+    org.springframework.r2dbc: WARN
+    io.r2dbc.mysql: WARN
+    com.azure: WARN
     
   file:
     name: /var/log/autenticacao/application.log
