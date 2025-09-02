@@ -286,9 +286,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
                 <configuration>
-                    <systemPropertyVariables>
-                        <spring.profiles.active>test</spring.profiles.active>
-                    </systemPropertyVariables>
+                    <!-- Remover systemPropertyVariables para evitar conflito com -Dspring.profiles.active -->
                     <argLine>
                         @{argLine}
                         -Xmx1g

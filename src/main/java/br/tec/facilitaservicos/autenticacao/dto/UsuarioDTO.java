@@ -37,7 +37,7 @@ public class UsuarioDTO {
     
     @Schema(description = "Identificador único do usuário", 
             example = "12345", 
-            required = true)
+            requiredMode = Schema.RequiredMode.REQUIRED)
     private Long id;
     
     @Schema(description = "Email do usuário usado como identificador principal", 

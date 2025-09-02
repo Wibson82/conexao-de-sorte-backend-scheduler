@@ -56,13 +56,8 @@ class AuthControllerTest {
     
     @Configuration
     static class TestConfig {
-        @Bean
-        public SecurityWebFilterChain testSecurityFilterChain(ServerHttpSecurity http) {
-            return http
-                .csrf(csrf -> csrf.disable())
-                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
-                .build();
-        }
+        // Remover configuração problemática de SecurityWebFilterChain
+        // O @WebFluxTest com exclusões deve ser suficiente
         
         @Bean
         @Primary

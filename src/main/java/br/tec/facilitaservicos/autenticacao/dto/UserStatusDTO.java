@@ -26,7 +26,7 @@ public class UserStatusDTO {
     
     @Schema(description = "Identificador único do usuário", 
             example = "12345",
-            required = true)
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @JsonProperty("user_id")
     private Long userId;
     
