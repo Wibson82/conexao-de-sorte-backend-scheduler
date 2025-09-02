@@ -142,7 +142,7 @@ docker-compose up -d mysql redis
 
 | Variável | Descrição | Padrão |
 |----------|-----------|---------|
-| `SPRING_PROFILES_ACTIVE` | Perfil ativo | `dev` |
+| `SPRING_PROFILES_ACTIVE` | Perfil ativo | `prod` |
 | `DB_HOST` | Host do MySQL | `localhost` |
 | `DB_USERNAME` | Usuário do banco | `conexao_sorte` |
 | `DB_PASSWORD` | Senha do banco | `senha123` |

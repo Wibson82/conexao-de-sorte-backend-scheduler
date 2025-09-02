@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
     environment:
       # Spring Profiles
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: prod
       
       # Database
       DB_HOST: mysql
@@ -107,7 +107,7 @@ services:
         -Xmx512m 
         -XX:+UseG1GC 
         -XX:+UseContainerSupport
-        -Dspring.profiles.active=dev
+        -Dspring.profiles.active=prod
     ports:
       - "8081:8081"
     volumes:
