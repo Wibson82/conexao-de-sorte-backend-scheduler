@@ -88,6 +88,68 @@ spring:
 user-service:
   url: ${USER_SERVICE_URL:http://localhost:8082}
 
+# Server Configuration (aplicável a todos os perfis)
+server:
+  port: ${conexao-de-sorte-server-port:8081}
+  shutdown: graceful
+  
+  # SSL/TLS Configuration
+  ssl:
+    enabled: ${conexao-de-sorte-ssl-enabled:false}
+    key-store: ${conexao-de-sorte-ssl-keystore-path:}
+    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
+    key-store-type: PKCS12
+    
+  netty:
+    connection-timeout: 20s
+    h2c-max-content-length: 0B
+    
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+# Management and Health Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+      cors:
+        allowed-origins: "*"
+        allowed-methods: GET
+        
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: when-authorized
+      probes:
+        enabled: true
+        
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+      
+  metrics:
+    distribution:
+      percentiles:
+        "[http.server.requests]": 0.5,0.95,0.99
+            
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+        step: 60s
+            
+  tracing:
+    enabled: true
+    sampling:
+      probability: ${TRACING_PROBABILITY:0.1}
+
 # Custom Application Properties
 app:
   # JWT Configuration with secure secret management
@@ -281,67 +343,10 @@ spring:
         secret:
           enabled: ${AZURE_KEYVAULT_ENABLED:true}
           
+# Configurações específicas de produção (sobrescrever padrões)
 server:
-  port: ${conexao-de-sorte-server-port:8081}
-  shutdown: graceful
-  
-  # SSL/TLS Configuration
   ssl:
-    enabled: ${conexao-de-sorte-ssl-enabled:false}
-    key-store: ${conexao-de-sorte-ssl-keystore-path:}
-    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
-    key-store-type: PKCS12
-  
-  netty:
-    connection-timeout: 20s
-    h2c-max-content-length: 0B
-    
-  # Desabilitar informações de erro em produção
-  error:
-    include-message: never
-    include-binding-errors: never
-    include-stacktrace: never
-    include-exception: false
-    
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-      base-path: /actuator
-      cors:
-        allowed-origins: "*"
-        allowed-methods: GET
-        
-  endpoint:
-    health:
-      show-details: when-authorized
-      show-components: when-authorized
-      probes:
-        enabled: true
-  
-  # Habilitar health checks sem autenticação para load balancer      
-  health:
-    readinessstate:
-      enabled: true
-    livenessstate:
-      enabled: true
-      
-  metrics:
-    distribution:
-      percentiles:
-        "[http.server.requests]": 0.5,0.95,0.99
-            
-  prometheus:
-    metrics:
-      export:
-        enabled: true
-        step: 60s
-            
-  tracing:
-    enabled: true
-    sampling:
-      probability: ${TRACING_PROBABILITY:0.1}
+    enabled: ${conexao-de-sorte-ssl-enabled:true}  # SSL habilitado em produção
       
 app:
   jwt:
