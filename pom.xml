@@ -333,14 +333,6 @@
                             </formats>
                         </configuration>
                     </execution>
-                    <!-- DESABILITADO: check que estava causando falha no pipeline -->
-                    <!-- <execution>
-                        <id>check</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                    </execution> -->
                 </executions>
             </plugin>
 

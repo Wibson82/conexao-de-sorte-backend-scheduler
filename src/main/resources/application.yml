@@ -227,6 +227,13 @@ app:
     auth-microservice: true
     audit-logging: true
     metrics-collection: true
+  rate-limit:
+    default-requests-per-minute: 100
+    endpoints:
+      "/auth/token":
+        requests-per-minute: 20
+      "/auth/refresh":
+        requests-per-minute: 50
 
 ---
 # Test Profile  
@@ -245,15 +252,20 @@ app:
   jwt:
     key-vault:
       enabled: false
-    
-logging:
-  level:
-    "[br.tec.facilitaservicos.autenticacao]": DEBUG
-    
-app:
   features:
     auth-microservice: true
     metrics-collection: false
+  rate-limit:
+    default-requests-per-minute: 5
+    endpoints:
+      "/auth/token":
+        requests-per-minute: 2
+      "/auth/refresh":
+        requests-per-minute: 3
+      
+logging:
+  level:
+    "[br.tec.facilitaservicos.autenticacao]": DEBUG
 
 ---
 # Production Profile
@@ -328,11 +340,25 @@ management:
             
   tracing:
     enabled: true
+    sampling:
+      probability: ${TRACING_PROBABILITY:0.1}
       
 app:
   jwt:
     key-vault:
       enabled: ${JWT_KEYVAULT_ENABLED:true}
+  features:
+    auth-microservice: true
+    jwks-rotation: true
+    audit-logging: true
+    metrics-collection: true
+  rate-limit:
+    default-requests-per-minute: 30
+    endpoints:
+      "/auth/token":
+        requests-per-minute: 5
+      "/auth/refresh":
+        requests-per-minute: 15
       
 logging:
   level:
@@ -345,20 +371,3 @@ logging:
     
   file:
     name: /var/log/autenticacao/application.log
-    
-app:
-  features:
-    auth-microservice: true
-    jwks-rotation: true
-    audit-logging: true
-    metrics-collection: true
-  
-  rate-limit:
-    default-requests-per-minute: 30
-    endpoints:
-      "/auth/token":
-        requests-per-minute: 5
-      "/auth/refresh":
-        requests-per-minute: 15
-      "/auth/refresh":
-        requests-per-minute: 15
