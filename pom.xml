@@ -12,11 +12,11 @@
     </parent>
 
     <groupId>br.tec.facilitaservicos</groupId>
-    <artifactId>autenticacao</artifactId>
+    <artifactId>scheduler</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>Autenticacao Microservice</name>
-    <description>Microserviço de autenticação reativo com Spring WebFlux e R2DBC</description>
+    <name>Scheduler Microservice</name>
+    <description>Microserviço de agendamento e ETL para loterias com Spring WebFlux e R2DBC</description>
 
     <properties>
         <java.version>24</java.version>
@@ -243,6 +243,19 @@
             <artifactId>r2dbc-h2</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- WireMock para mocks HTTP -->
+        <dependency>
+            <groupId>com.github.tomakehurst</groupId>
+            <artifactId>wiremock</artifactId>
+            <version>3.9.1</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -252,7 +265,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>br.tec.facilitaservicos.autenticacao.AutenticacaoApplication</mainClass>
+                    <mainClass>br.tec.facilitaservicos.scheduler.SchedulerApplication</mainClass>
                     <layers>
                         <enabled>true</enabled>
                     </layers>

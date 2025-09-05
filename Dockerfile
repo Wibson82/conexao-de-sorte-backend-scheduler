@@ -1,8 +1,8 @@
 # ============================================================================
-# 🐳 DOCKERFILE MULTI-ESTÁGIO - MICROSERVIÇO AUTENTICAÇÃO
+# 🐳 DOCKERFILE MULTI-ESTÁGIO - MICROSERVIÇO SCHEDULER
 # ============================================================================
 #
-# Dockerfile otimizado para microserviço de autenticação com:
+# Dockerfile otimizado para microserviço de scheduler com:
 # - Multi-stage build para reduzir tamanho da imagem
 # - Java 24 com JVM otimizada para containers
 # - Usuário não-root para segurança
@@ -10,8 +10,8 @@
 # - Otimizações de performance para OAuth2/JWT
 # - Suporte a debug remoto (desenvolvimento)
 #
-# Build: docker build -t conexaodesorte/autenticacao:latest .
-# Run: docker run -p 8081:8081 conexaodesorte/autenticacao:latest
+# Build: docker build -t conexaodesorte/scheduler:latest .
+# Run: docker run -p 8084:8084 conexaodesorte/scheduler:latest
 #
 # @author Sistema de Migração R2DBC
 # @version 1.0
@@ -87,11 +87,11 @@ COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 # Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
 
 # Expor porta da aplicação
-EXPOSE 8081
+EXPOSE 8084
 
 # Health check nativo
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8081/actuator/health || exit 1
+  CMD curl -f http://localhost:8084/actuator/health || exit 1
 
 # Script de entrada com pré-checagem de conexão ao banco (similar ao serviço de Resultados)
 RUN printf '%s\n' '#!/bin/sh' \
@@ -119,8 +119,8 @@ RUN printf '%s\n' '#!/bin/sh' \
 USER appuser:appgroup
 
 # Labels para metadata
-LABEL org.opencontainers.image.title="Conexão de Sorte - Autenticação"
-LABEL org.opencontainers.image.description="Microserviço de Autenticação OAuth2/JWT"
+LABEL org.opencontainers.image.title="Conexão de Sorte - Scheduler"
+LABEL org.opencontainers.image.description="Microserviço de Scheduler ETL para Loterias"
 LABEL org.opencontainers.image.version=${VERSION}
 LABEL org.opencontainers.image.created=${BUILD_DATE}
 LABEL org.opencontainers.image.revision=${VCS_REF}

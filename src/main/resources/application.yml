@@ -1,378 +1,101 @@
-spring:
-  jackson:
-    time-zone: America/Sao_Paulo
-    locale: pt_BR
-  application:
-    name: autenticacao
-    
-  profiles:
-    default: prod
-    # Profiles são sobrescritos via SPRING_PROFILES_ACTIVE no deployment
-  
-  main:
-    allow-bean-definition-overriding: true
-    
-  # Cache reativo (Redis) - Configuração crítica para autenticação
-  data:
-    redis:
-      host: ${conexao-de-sorte-redis-host:localhost}
-      port: ${conexao-de-sorte-redis-port:6379}
-      password: ${conexao-de-sorte-redis-password:}
-      database: ${conexao-de-sorte-redis-database:0}
-      timeout: 3000ms
-      connect-timeout: 10000ms
-      lettuce:
-        pool:
-          enabled: true
-          max-active: 30
-          max-idle: 15
-          min-idle: 8
-          max-wait: 5000ms
-          time-between-eviction-runs: 30s
-        cluster:
-          refresh:
-            adaptive: true
-            period: 60s
+server:
+  port: ${conexao-de-sorte-server-port:8084}
+  ssl:
+    enabled: ${conexao-de-sorte-ssl-enabled:false}
+    key-store: ${conexao-de-sorte-ssl-keystore-path:}
+    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
 
-  # Cache Configuration - Segurança crítica
-  cache:
-    type: redis
-    cache-names: rsa-private-key, rsa-public-key, key-id, valid-tokens, jwks
-    redis:
-      time-to-live: PT30M # TTL padrão para segurança
-      cache-null-values: false
-      key-prefix: "auth:"
-      use-key-prefix: true
-          
-  # Azure Key Vault with manual configuration
-  cloud:
-    azure:
-      keyvault:
-        secret:
-          enabled: ${AZURE_KEYVAULT_ENABLED:true}
-          endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
-      profile:
-        tenant-id: ${AZURE_TENANT_ID:}
-        subscription-id: ${AZURE_SUBSCRIPTION_ID:}
-        client-id: ${AZURE_CLIENT_ID:}
-  
-  # Configtree secret management
+spring:
+  application:
+    name: conexao-scheduler
+  main:
+    web-application-type: reactive
+  codec:
+    max-in-memory-size: 10MB
+    
+  # Config import para Azure Key Vault secrets
   config:
     import:
       - optional:configtree:/etc/secrets/azure/
       - optional:configtree:/mnt/secrets/
       - optional:file:./secrets.properties
       
+  # Azure Key Vault (padrão simplificado)
+  cloud:
+    azure:
+      keyvault:
+        secret:
+          enabled: ${AZURE_KEYVAULT_ENABLED:false}
+          endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
+      profile:
+        tenant-id: ${AZURE_TENANT_ID:}
+        subscription-id: ${AZURE_SUBSCRIPTION_ID:}
+        client-id: ${AZURE_CLIENT_ID:}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${conexao-de-sorte-jwt-issuer}
+          jwk-set-uri: ${conexao-de-sorte-jwt-jwks-uri}
   r2dbc:
-    url: ${conexao-de-sorte-database-r2dbc-url:r2dbc:mysql://localhost:3306/conexao_sorte_auth?useSSL=true&allowPublicKeyRetrieval=true}
-    username: ${conexao-de-sorte-database-username:}
-    password: ${conexao-de-sorte-database-password:}
-    pool:
-      initial-size: 5
-      max-size: 25
-      max-idle-time: 30m
-      max-acquire-time: 60s
-      max-create-connection-time: 30s
-      max-life-time: 60m
-      validation-query: SELECT 1
+    # Preferencialmente usa -database-r2dbc-url; mantém compat com -database-url e define fallback seguro
+    url: ${conexao-de-sorte-database-r2dbc-url:${conexao-de-sorte-database-url:r2dbc:mysql://mysql-proxy:6033/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false}}
+    username: ${conexao-de-sorte-database-username}
+    password: ${conexao-de-sorte-database-password}
+  jackson:
+    serialization:
+      WRITE_DATES_AS_TIMESTAMPS: false
 
-  flyway:
-    enabled: true
-    url: ${conexao-de-sorte-database-jdbc-url:jdbc:mysql://localhost:3306/conexao_sorte_auth}
-    user: ${conexao-de-sorte-database-username:conexao_sorte}
-    password: ${conexao-de-sorte-database-password:}
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-    validate-on-migrate: false
-
-user-service:
-  url: ${USER_SERVICE_URL:http://localhost:8082}
-
-# Server Configuration (aplicável a todos os perfis)
-server:
-  port: ${conexao-de-sorte-server-port:8081}
-  shutdown: graceful
-  
-  # SSL/TLS Configuration
-  ssl:
-    enabled: ${conexao-de-sorte-ssl-enabled:false}
-    key-store: ${conexao-de-sorte-ssl-keystore-path:}
-    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
-    key-store-type: PKCS12
-    
-  netty:
-    connection-timeout: 20s
-    h2c-max-content-length: 0B
-    
-  error:
-    include-message: never
-    include-binding-errors: never
-    include-stacktrace: never
-    include-exception: false
-
-# Management and Health Configuration
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
-      base-path: /actuator
-      cors:
-        allowed-origins: "*"
-        allowed-methods: GET
-        
+  metrics:
+    tags:
+      application: conexao-scheduler
   endpoint:
     health:
-      show-details: when-authorized
-      show-components: when-authorized
-      probes:
-        enabled: true
-        
-  health:
-    readinessstate:
+      show-details: when_authorized
+
+cors:
+  allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
+  allowed-origins: ${conexao-de-sorte-cors-allowed-origins:*}
+
+scheduler:
+  etl:
+    loterias:
       enabled: true
-    livenessstate:
-      enabled: true
-      
-  metrics:
-    distribution:
-      percentiles:
-        "[http.server.requests]": 0.5,0.95,0.99
-            
-  prometheus:
-    metrics:
-      export:
-        enabled: true
-        step: 60s
-            
-  tracing:
-    enabled: true
-    sampling:
-      probability: ${TRACING_PROBABILITY:0.1}
+      backoff-ms: 2000
+      max-retries: 5
 
-# Custom Application Properties
-app:
-  # JWT Configuration with secure secret management
-  jwt:
-    # Duracao dos tokens (em segundos)
-    access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:3600}  # 1 hora
-    refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:604800}  # 7 dias
-    
-    # Azure Key Vault keys - using secure naming
-    key-vault:
-      enabled: ${JWT_KEYVAULT_ENABLED:true}
-      private-key-name: ${JWT_PRIVATE_KEY_NAME:conexao-de-sorte-jwt-signing-key}
-      public-key-name: ${JWT_PUBLIC_KEY_NAME:conexao-de-sorte-jwt-verification-key}
-      key-id-name: ${JWT_KEY_ID_NAME:conexao-de-sorte-jwt-key-id}
-      secret-name: ${JWT_SECRET_NAME:conexao-de-sorte-jwt-secret}
-      
-    # Fallback keys for development/testing (never use in production)
-    fallback:
-      private-key: ${conexao-de-sorte-jwt-privateKey:}
-      public-key: ${conexao-de-sorte-jwt-publicKey:}
-      key-id: ${conexao-de-sorte-jwt-key-id:}
-      secret: ${conexao-de-sorte-jwt-secret:}
-      
-    # Issuer e Audience
-    issuer: ${conexao-de-sorte-jwt-issuer:https://auth.conexaodesorte.com}
-    audience: ${JWT_AUDIENCE:conexao-de-sorte}
-    
-    # JWKS cache
-    jwks-cache-duration: ${JWT_JWKS_CACHE_DURATION:3600}  # 1 hora
-    
-    # Security settings
-    algorithm: ${JWT_ALGORITHM:RS256}
-    rotation:
-      enabled: ${JWT_ROTATION_ENABLED:true}
-      schedule: ${JWT_ROTATION_SCHEDULE:0 2 * * *}  # Daily at 2 AM
-
-  # CORS Configuration
-  cors:
-    allowed-origins: ${conexao-de-sorte-cors-allowed-origins:http://localhost:3000,https://app.conexaodesorte.com}
-    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
-    allowed-headers: "*"
-    allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
-    max-age: 3600
-
-  # Rate Limiting
-  rate-limit:
-    enabled: true
-    default-requests-per-minute: 60
-    endpoints:
-      "/auth/token":
-        requests-per-minute: 10
-        burst-capacity: 20
-      "/auth/refresh":
-        requests-per-minute: 30
-        burst-capacity: 50
-      "/auth/introspect":
-        requests-per-minute: 100
-        burst-capacity: 200
-
-  # Security Headers
-  security:
-    headers:
-      content-security-policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'"
-      x-content-type-options: nosniff
-      x-frame-options: DENY
-      x-xss-protection: "1; mode=block"
-      strict-transport-security: "max-age=31536000; includeSubDomains"
-      
-  # Feature Flags
-  features:
-    auth-microservice: ${FEATURE_AUTH_MS:false}
-    jwks-rotation: ${FEATURE_JWKS_ROTATION:true}
-    audit-logging: ${FEATURE_AUDIT_LOGGING:true}
-    metrics-collection: ${FEATURE_METRICS:true}
-
-# Logging Configuration
-logging:
-  level:
-    "[br.tec.facilitaservicos.autenticacao]": ${LOG_LEVEL:INFO}
-    "[org.springframework.security]": ${SECURITY_LOG_LEVEL:WARN}
-    "[org.springframework.r2dbc]": ${R2DBC_LOG_LEVEL:WARN}
-    "[io.r2dbc.mysql]": ${MYSQL_LOG_LEVEL:WARN}
-    "[com.azure]": ${AZURE_LOG_LEVEL:WARN}
-    
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
-    
-  file:
-    name: ${LOG_FILE:logs/autenticacao.log}
-
-# OpenAPI Documentation
-springdoc:
-  api-docs:
-    enabled: true
-    path: /v3/api-docs
-  swagger-ui:
-    enabled: true
-    path: /swagger-ui.html
-    operationsSorter: method
-    tagsSorter: alpha
-  show-actuator: false
-  
 # Resilience4j Configuration
 resilience4j:
-  ratelimiter:
-    instances:
-      auth-service:
-        limit-for-period: 10
-        limit-refresh-period: 1m
-        timeout-duration: 3s
-        
   circuitbreaker:
     instances:
-      azure-keyvault:
+      scheduler-etl:
         sliding-window-size: 100
         minimum-number-of-calls: 10
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
+      loteria-extraction:
+        sliding-window-size: 50
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 3
+  timelimiter:
+    instances:
+      loteria-extraction:
+        timeout-duration: 30s
+        cancel-running-future: true
 
----
-# Development Profile
-spring:
-  config:
-    activate:
-      on-profile: dev
-      
 logging:
   level:
-    "[br.tec.facilitaservicos.autenticacao]": DEBUG
-    "[org.springframework.security]": DEBUG
-    "[org.springframework.r2dbc]": DEBUG
-    
-app:
-  features:
-    auth-microservice: true
-    audit-logging: true
-    metrics-collection: true
-  rate-limit:
-    default-requests-per-minute: 100
-    endpoints:
-      "/auth/token":
-        requests-per-minute: 20
-      "/auth/refresh":
-        requests-per-minute: 50
-
----
-# Test Profile  
-spring:
-  config:
-    activate:
-      on-profile: test
-      
-  cloud:
-    azure:
-      keyvault:
-        secret:
-          enabled: false
-          
-app:
-  jwt:
-    key-vault:
-      enabled: false
-  features:
-    auth-microservice: true
-    metrics-collection: false
-  rate-limit:
-    default-requests-per-minute: 5
-    endpoints:
-      "/auth/token":
-        requests-per-minute: 2
-      "/auth/refresh":
-        requests-per-minute: 3
-      
-logging:
-  level:
-    "[br.tec.facilitaservicos.autenticacao]": DEBUG
-
----
-# Production Profile
-spring:
-  config:
-    activate:
-      on-profile: prod
-      
-  # Habilitar Key Vault em produção
-  cloud:
-    azure:
-      keyvault:
-        secret:
-          enabled: ${AZURE_KEYVAULT_ENABLED:true}
-          
-# Configurações específicas de produção (sobrescrever padrões)
-server:
-  ssl:
-    enabled: ${conexao-de-sorte-ssl-enabled:true}  # SSL habilitado em produção
-      
-app:
-  jwt:
-    key-vault:
-      enabled: ${JWT_KEYVAULT_ENABLED:true}
-  features:
-    auth-microservice: true
-    jwks-rotation: true
-    audit-logging: true
-    metrics-collection: true
-  rate-limit:
-    default-requests-per-minute: 30
-    endpoints:
-      "/auth/token":
-        requests-per-minute: 5
-      "/auth/refresh":
-        requests-per-minute: 15
-      
-logging:
-  level:
-    "[br.tec.facilitaservicos.autenticacao]": INFO
-    root: WARN
-    "[org.springframework.security]": WARN
-    "[org.springframework.r2dbc]": WARN
-    "[io.r2dbc.mysql]": WARN
-    "[com.azure]": WARN
-    
-  file:
-    name: /var/log/autenticacao/application.log
+    root: INFO
+    org.springframework.web: INFO
+    br.tec.facilitaservicos.scheduler: INFO
+    io.github.resilience4j: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{jobId:-},%X{modalidade:-},%X{data:-}] %logger{36} - %msg%n"
