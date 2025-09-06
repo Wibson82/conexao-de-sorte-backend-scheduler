@@ -22,11 +22,12 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   test-runner:
-    runs-on: [self-hosted, scheduler-service]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     name: 🧪 Test Self-hosted Runner
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +54,8 @@ jobs:
 
   build-and-test:
     needs: test-runner
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: 🏗️ Build and Test
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +112,8 @@ jobs:
           retention-days: 7
 
   build-image:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     name: 🐳 Build Docker Image
     needs: build-and-test
     permissions:
@@ -124,6 +127,40 @@ jobs:
       image-tags: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Fetch Key Vault secrets (build args)
+        id: kv
+        shell: bash
+        run: |
+          set -euo pipefail
+          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
+          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
+            VAULT="${BASH_REMATCH[1]}"
+          else
+            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+            exit 1
+          fi
+          map_kv() { echo "$1" | tr '[:lower:]' '[:upper:]' | tr '-' '_'; }
+          fetch() {
+            local name="$1"; local var="$(map_kv "$name")"; 
+            val=$(az keyvault secret show --vault-name "$VAULT" --name "$name" --query value -o tsv 2>/dev/null || true)
+            if [ -n "$val" ]; then echo "$var<<__EOF__" >> $GITHUB_ENV; echo "$val" >> $GITHUB_ENV; echo "__EOF__" >> $GITHUB_ENV; fi
+          }
+          secrets=(
+            conexao-de-sorte-database-url
+            conexao-de-sorte-database-jdbc-url
+            conexao-de-sorte-database-r2dbc-url
+            conexao-de-sorte-database-username
+            conexao-de-sorte-database-password
+            conexao-de-sorte-jwt-issuer
+            conexao-de-sorte-jwt-jwks-uri
+          )
+          for s in "${secrets[@]}"; do fetch "$s"; done
       - name: Compute lowercase image name
         id: image_name
         run: |
@@ -167,6 +204,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           network: host
+          build-args: |
+            CONEXAO_DE_SORTE_DATABASE_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_URL }}
+            CONEXAO_DE_SORTE_DATABASE_JDBC_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_JDBC_URL }}
+            CONEXAO_DE_SORTE_DATABASE_R2DBC_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_R2DBC_URL }}
+            CONEXAO_DE_SORTE_DATABASE_USERNAME=${{ env.CONEXAO_DE_SORTE_DATABASE_USERNAME }}
+            CONEXAO_DE_SORTE_DATABASE_PASSWORD=${{ env.CONEXAO_DE_SORTE_DATABASE_PASSWORD }}
+            CONEXAO_DE_SORTE_JWT_ISSUER=${{ env.CONEXAO_DE_SORTE_JWT_ISSUER }}
+            CONEXAO_DE_SORTE_JWT_JWKS_URI=${{ env.CONEXAO_DE_SORTE_JWT_JWKS_URI }}
           build-args: |
             SERVICE_NAME=${{ env.SERVICE_NAME }}
             BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
