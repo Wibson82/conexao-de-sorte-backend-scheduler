@@ -42,6 +42,7 @@ public class LoteriasETLJob {
     private final Counter circuitBreakerOpenCounter;
     private final Timer executionTimer;
     private final CircuitBreaker circuitBreaker;
+    private final MeterRegistry meterRegistry;
 
     public LoteriasETLJob(SchedulerProperties properties, 
                          ServicoExtracaoLoteria servicoExtracao,
@@ -49,6 +50,7 @@ public class LoteriasETLJob {
                          CircuitBreakerRegistry circuitBreakerRegistry) {
         this.properties = properties;
         this.servicoExtracao = servicoExtracao;
+        this.meterRegistry = meterRegistry;
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("scheduler-etl");
         
         this.successCounter = Counter.builder("scheduler.etl.jobs.success")
@@ -117,8 +119,9 @@ public class LoteriasETLJob {
                           .and(Markers.append("startTime", execution.getStartTime())), 
                    "Iniciando execução do job ETL");
         
-        return Timer.Sample.start(executionTimer)
-                .stop(executarComRetryECircuitBreaker(execution))
+        Timer.Sample sample = Timer.start(meterRegistry);
+        return executarComRetryECircuitBreaker(execution)
+                .doFinally(signalType -> sample.stop(executionTimer))
                 .doOnNext(result -> {
                     successCounter.increment();
                     logger.info(Markers.append("executionTime", 

@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.time.Duration;
@@ -73,11 +74,13 @@ public class JobService {
     private final JobRepository jobRepository;
     private final Scheduler quartzScheduler;
     private final MeterRegistry meterRegistry;
+    private final ObjectMapper objectMapper;
 
-    public JobService(JobRepository jobRepository, Scheduler quartzScheduler, MeterRegistry meterRegistry) {
+    public JobService(JobRepository jobRepository, Scheduler quartzScheduler, MeterRegistry meterRegistry, ObjectMapper objectMapper) {
         this.jobRepository = jobRepository;
         this.quartzScheduler = quartzScheduler;
         this.meterRegistry = meterRegistry;
+        this.objectMapper = objectMapper;
     }
     
     // Cache para jobs em execução
@@ -102,9 +105,9 @@ public class JobService {
 
     // Gauge para jobs ativos
     {
-        Gauge.builder("jobs.ativos")
+        Gauge.builder("jobs.ativos", this, JobService::contarJobsAtivos)
             .description("Número de jobs ativos")
-            .register(meterRegistry, this, JobService::contarJobsAtivos);
+            .register(meterRegistry);
     }
 
     // === OPERAÇÕES CRUD ===
@@ -123,7 +126,7 @@ public class JobService {
                 .prioridade(request.getPrioridade())
                 .grupo(request.getGrupo())
                 .cronExpression(request.getCronExpression())
-                .parametros(request.getParametros())
+                .parametros(convertMapToJson(request.getParametros()))
                 .timeoutSegundos(request.getTimeoutSegundos())
                 .maxTentativas(request.getMaxTentativas())
                 .permitirExecucaoConcorrente(Boolean.FALSE)
@@ -203,7 +206,7 @@ public class JobService {
                 if (request.getDescricao() != null) job.setDescricao(request.getDescricao());
                 if (request.getPrioridade() != null) job.setPrioridade(request.getPrioridade());
                 if (request.getCronExpression() != null) job.setCronExpression(request.getCronExpression());
-                if (request.getParametros() != null) job.setParametros(request.getParametros());
+                if (request.getParametros() != null) job.setParametros(convertMapToJson(request.getParametros()));
                 if (request.getTimeoutSegundos() != null) job.setTimeoutSegundos(request.getTimeoutSegundos());
                 if (request.getMaxTentativas() != null) job.setMaxTentativas(request.getMaxTentativas());
                 if (request.getAtivo() != null) job.setAtivo(request.getAtivo());
@@ -563,6 +566,18 @@ public class JobService {
 
     private double contarJobsAtivos() {
         return jobRepository.countJobsAtivos().block(Duration.ofSeconds(5));
+    }
+
+    private String convertMapToJson(Map<String, Object> parametros) {
+        if (parametros == null || parametros.isEmpty()) {
+            return "{}";
+        }
+        try {
+            return objectMapper.writeValueAsString(parametros);
+        } catch (Exception e) {
+            log.warn("Erro ao converter parâmetros para JSON: {}", e.getMessage());
+            return "{}";
+        }
     }
 
     // Classe interna para execução de jobs
