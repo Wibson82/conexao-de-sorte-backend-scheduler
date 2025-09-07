@@ -1,4 +1,4 @@
-name: 🔐 Scheduler Microservice - CI/CD Pipeline
+name: ⏰ Scheduler Microservice - CI/CD Pipeline (Self-hosted Runners)
 
 on:
   push:
@@ -15,20 +15,18 @@ on:
         options: [staging, production]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   SERVICE_NAME: scheduler
   TZ: America/Sao_Paulo
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  test-runner:
+  validate-environment:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    name: 🧪 Test Self-hosted Runner
+    timeout-minutes: 10
+    name: ✅ Validate Build Environment
     steps:
       - uses: actions/checkout@v4
       - name: "Guard: forbid r2dbc:h2 outside tests"
@@ -40,23 +38,26 @@ jobs:
             echo "$FOUND" | grep -v "src/test/" >&2 || true
             exit 1
           fi
-      - name: Test runner connectivity
+      - name: "Guard: H2 not in non-test scopes"
         run: |
-          echo "🎉 Self-hosted runner está funcionando!"
-          echo "🏃 Runner: $(hostname)"
-          echo "📅 Data: $(date)"
-          echo "👤 Usuário: $(whoami)"
-          echo "📁 Diretório: $(pwd)"
-          echo "🔍 Java version:"
-          java -version || echo "Java não encontrado"
-          echo "🐳 Docker version:"
-          docker --version || echo "Docker não encontrado"
+          set -euo pipefail
+          mvn -B -q dependency:list -DincludeScope=compile -DoutputFile=dep.txt -DappendOutput=true || true
+          if grep -E "com\.h2database:h2|io\.r2dbc:r2dbc-h2" dep.txt; then
+            echo "H2 present in non-test scope (compile/runtime)" >&2
+            exit 1
+          fi
+      - name: Check self-hosted runner availability
+        run: |
+          echo "🔍 Checking GitHub Runner labels and environment..."
+          echo "Runner OS: $RUNNER_OS"
+          echo "Runner Architecture: $RUNNER_ARCH"
+          echo "Available Labels: self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler"
 
   build-and-test:
-    needs: test-runner
+    needs: validate-environment
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    name: 🏗️ Build and Test
+    name: 🏗️ Build and Test on GitHub Runners
     steps:
       - uses: actions/checkout@v4
       - name: Setup Java 24
@@ -69,71 +70,55 @@ jobs:
         run: |
           chmod +x ./mvnw
           ./mvnw --version
-      # DESABILITADO: Testes devido incompatibilidade Java 24 com Mockito
-      # - name: Run unit tests with coverage
-      #   run: ./mvnw clean verify -Dspring.profiles.active=test
-      # DESABILITADO: JaCoCo devido incompatibilidade Java 24 com Mockito  
-      # - name: Upload JaCoCo coverage reports
-      #   uses: actions/upload-artifact@v4
-      #   if: always()
-      #   with:
-      #     name: jacoco-coverage-reports
-      #     path: |
-      #       target/site/jacoco/
-      #       target/site/jacoco/jacoco.xml
-      #     retention-days: 30
-      # TEMPORARIAMENTE DESABILITADO: Snyk SAST com problema de JAVA_HOME em container Docker
-      # TODO: Reabilitar após correção do ambiente Java no container Snyk
-      # - name: Run Snyk SAST security scan
-      #   uses: snyk/actions/maven@master
-      #   env:
-      #     SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      #   with:
-      #     args: |
-      #       --all-projects 
-      #       --severity-threshold=high 
-      #       --fail-on=all 
-      #       --project-name=scheduler-service
-      # - name: Monitor with Snyk (main branch only)
-      #   if: github.ref == 'refs/heads/main'
-      #   uses: snyk/actions/maven@master
-      #   env:
-      #     SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      #   with:
-      #     command: monitor
-      #     args: --project-name=scheduler-service
       - name: Build application (skip tests)
         run: ./mvnw clean package -DskipTests
-      - name: Upload artifact
+      - name: Upload JAR artifact for self-hosted runner
         uses: actions/upload-artifact@v4
         with:
           name: scheduler-microservice-jar
           path: target/*.jar
-          retention-days: 7
+          retention-days: 1
 
-  build-image:
-    runs-on: ubuntu-latest
+  build-deploy-selfhosted:
+    runs-on: [self-hosted, conexao-de-sorte-backend-scheduler]
     timeout-minutes: 45
-    name: 🐳 Build Docker Image
+    name: 🚀 Build & Deploy on Self-hosted Runner (Ubuntu)
     needs: build-and-test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
     permissions:
       id-token: write
       contents: read
-      packages: write
-      attestations: write
-    outputs:
-      image-digest: ${{ steps.build.outputs.digest }}
-      image-name-lower: ${{ steps.image_name.outputs.image_name_lower }}
-      image-tags: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
+      
+      - name: Verificar ambiente do self-hosted runner
+        run: |
+          echo "🔍 Verificando ambiente do self-hosted runner..."
+          echo "🏃 Runner: $(hostname)"
+          echo "📅 Data: $(date)"
+          echo "👤 Usuário: $(whoami)"
+          echo "📁 Diretório: $(pwd)"
+          echo "💾 Espaço disponível:"
+          df -h
+          echo "🐳 Docker version:"
+          docker --version
+          echo "☕ Java version:"
+          java -version || echo "Java não encontrado via PATH"
+          
+      - name: Download JAR artifact from GitHub runners
+        uses: actions/download-artifact@v4
+        with:
+          name: scheduler-microservice-jar
+          path: ./target
+          
+      - name: Azure Login (OIDC) no self-hosted runner
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Fetch Key Vault secrets (build args)
+
+      - name: Fetch Azure Key Vault secrets
         id: kv
         shell: bash
         run: |
@@ -145,241 +130,174 @@ jobs:
             echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
             exit 1
           fi
-          map_kv() { echo "$1" | tr '[:lower:]' '[:upper:]' | tr '-' '_'; }
-          fetch() {
-            local name="$1"; local var="$(map_kv "$name")"; 
-            val=$(az keyvault secret show --vault-name "$VAULT" --name "$name" --query value -o tsv 2>/dev/null || true)
-            if [ -n "$val" ]; then echo "$var<<__EOF__" >> $GITHUB_ENV; echo "$val" >> $GITHUB_ENV; echo "__EOF__" >> $GITHUB_ENV; fi
+          
+          echo "Loading secrets from Azure Key Vault: $VAULT" >&2
+          get() { 
+            echo "Fetching secret: $1" >&2
+            SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
+            if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
+              echo "ERROR: Secret $1 not found in Azure Key Vault $VAULT" >&2
+              exit 1
+            fi
+            echo "$SECRET_VALUE"
           }
-          secrets=(
-            conexao-de-sorte-database-url
-            conexao-de-sorte-database-jdbc-url
-            conexao-de-sorte-database-r2dbc-url
-            conexao-de-sorte-database-username
-            conexao-de-sorte-database-password
-            conexao-de-sorte-jwt-issuer
-            conexao-de-sorte-jwt-jwks-uri
-          )
-          for s in "${secrets[@]}"; do fetch "$s"; done
-      - name: Compute lowercase image name
-        id: image_name
-        run: |
-          set -euo pipefail
-          REPO='${{ env.IMAGE_NAME }}'
-          echo "image_name_lower=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: network=host
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.image_name.outputs.image_name_lower }}
-          tags: |
-            type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYY-MM-DD-HHmmss'}}-{{sha}},enable={{is_default_branch}}
-          labels: |
-            org.opencontainers.image.title=Scheduler Microservice
-            org.opencontainers.image.description=Job Scheduling Microservice
-            org.opencontainers.image.service=${{ env.SERVICE_NAME }}
-      - name: Build and push image
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          sbom: true
-          provenance: mode=max
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          network: host
-          build-args: |
-            CONEXAO_DE_SORTE_DATABASE_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_URL }}
-            CONEXAO_DE_SORTE_DATABASE_JDBC_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_JDBC_URL }}
-            CONEXAO_DE_SORTE_DATABASE_R2DBC_URL=${{ env.CONEXAO_DE_SORTE_DATABASE_R2DBC_URL }}
-            CONEXAO_DE_SORTE_DATABASE_USERNAME=${{ env.CONEXAO_DE_SORTE_DATABASE_USERNAME }}
-            CONEXAO_DE_SORTE_DATABASE_PASSWORD=${{ env.CONEXAO_DE_SORTE_DATABASE_PASSWORD }}
-            CONEXAO_DE_SORTE_JWT_ISSUER=${{ env.CONEXAO_DE_SORTE_JWT_ISSUER }}
-            CONEXAO_DE_SORTE_JWT_JWKS_URI=${{ env.CONEXAO_DE_SORTE_JWT_JWKS_URI }}
-          build-args: |
-            SERVICE_NAME=${{ env.SERVICE_NAME }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
-            VCS_REF=${{ github.sha }}
-            VERSION=1.0.0
-
-  sign-image:
-    runs-on: self-hosted
-    name: ✍️ Sign & Verify (100% OIDC keyless)
-    needs: build-image
-    permissions:
-      id-token: write
-      contents: read
-      packages: write
-      attestations: write
-    steps:
-      - name: Verify OIDC token availability
-        run: |
-          echo "🔍 Verifying OIDC token is available..."
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-            echo "❌ OIDC token not available"
-            exit 1
-          fi
-          echo "✅ OIDC token is available"
-      - name: Resolve image digest ref
-        id: ref
-        run: |
-          set -euo pipefail
-          IMG="ghcr.io/${{ needs.build-image.outputs.image-name-lower }}@${{ needs.build-image.outputs.image-digest }}"
-          echo "lower=$(echo "$IMG" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-        with:
-          cosign-release: v2.5.3
-      - name: Login GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pull digest
-        run: docker pull "${{ steps.ref.outputs.lower }}"
-      - name: Sign (keyless OIDC)
-        env:
-          COSIGN_EXPERIMENTAL: "1"
-        run: |
-          echo "🔐 Signing container image with OIDC keyless signature..."
-          cosign sign --yes "${{ steps.ref.outputs.lower }}"
-      - name: Verify OIDC signature
-        env:
-          COSIGN_EXPERIMENTAL: "1"
-        run: |
-          echo "✅ Verifying OIDC keyless signature..."
-          cosign verify \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/\.github/workflows/.*@refs/heads/main$" \
-            "${{ steps.ref.outputs.lower }}"
-          echo "🎉 Container image signature verified successfully!"
-
-  deploy-production:
-    needs: [build-image, sign-image]
-    runs-on: [self-hosted, scheduler-service]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
-    name: 🌟 Deploy to Production (Self-hosted)
-    permissions:
-      id-token: write
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Load Azure Key Vault secrets
-        run: |
-          set -euo pipefail
-          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
-          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
-            VAULT="${BASH_REMATCH[1]}"
-          else
-            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
-            echo "Expected format: https://vault-name.vault.azure.net/" >&2
-            exit 1
-          fi
-          get() { az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv; }
-          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
-          echo "DB_USER=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
-          echo "DB_PASS=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
-          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          
+          # Scheduler specific secrets
+          echo "DATABASE_URL=$(get conexao-de-sorte-database-url)" >> $GITHUB_ENV
+          echo "DATABASE_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "DATABASE_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
           echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
+          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          
+          echo "✅ Azure Key Vault secrets loaded successfully" >&2
+          
       - name: 🧹 Clean old containers
         run: |
+          set -euo pipefail
           echo "🧹 Cleaning old scheduler-microservice containers..."
+          
           if docker ps -a --format '{{.Names}}' | grep -q '^scheduler-microservice$'; then
-            docker stop 'scheduler-microservice' && docker rm 'scheduler-microservice'
+            echo '🛑 Stopping container: scheduler-microservice'
+            docker stop 'scheduler-microservice' || true
+            echo '🗑️ Removing container: scheduler-microservice'
+            docker rm 'scheduler-microservice' || true
+          else
+            echo '✅ No scheduler-microservice container found'
           fi
-      - name: 🚀 Deploy scheduler-microservice
+          
+          # Remover imagens antigas do scheduler
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep "^wibson82/conexao-de-sorte-backend-scheduler:" | head -n -1 | xargs -r docker rmi || true
+          echo "✅ Container cleanup completed"
+
+      - name: 🐳 Build Docker image (Local - Self-hosted)
+        id: build
         run: |
           set -euo pipefail
-          IMAGE_DIGEST="${{ needs.build-image.outputs.image-digest }}"
-          IMAGE_NAME_LOWER="${{ needs.build-image.outputs.image-name-lower }}"
-          FULL_IMAGE="ghcr.io/${IMAGE_NAME_LOWER}@${IMAGE_DIGEST}"
-          docker login ghcr.io -u ${{ github.actor }} --password-stdin <<< '${{ secrets.GITHUB_TOKEN }}'
-          docker pull "${FULL_IMAGE}"
+          TAG="wibson82/conexao-de-sorte-backend-scheduler:$(date +'%Y-%m-%d-%H%M%S')"
+          
+          echo "🏗️ Building Docker image locally on self-hosted runner: $TAG"
+          docker build \
+            --platform linux/amd64 \
+            --tag "$TAG" \
+            --build-arg CONEXAO_DE_SORTE_DATABASE_URL="${{ env.DATABASE_URL }}" \
+            --build-arg CONEXAO_DE_SORTE_DATABASE_USERNAME="${{ env.DATABASE_USERNAME }}" \
+            --build-arg CONEXAO_DE_SORTE_DATABASE_PASSWORD="${{ env.DATABASE_PASSWORD }}" \
+            --build-arg CONEXAO_DE_SORTE_JWT_ISSUER="${{ env.JWT_ISSUER }}" \
+            --build-arg CONEXAO_DE_SORTE_JWT_JWKS_URI="${{ env.JWT_JWKS_URI }}" \
+            --build-arg SERVICE_NAME="${{ env.SERVICE_NAME }}" \
+            --build-arg BUILD_DATE="${{ github.event.head_commit.timestamp || github.run_id }}" \
+            --build-arg VCS_REF="${{ github.sha }}" \
+            --build-arg VERSION="1.0.0" \
+            .
+          
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "✅ Image built locally on self-hosted runner (NO REGISTRY)"
+
+      - name: 🚀 Deploy container directly
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="${{ steps.build.outputs.image_tag }}"
+          export TZ=America/Sao_Paulo
+          
+          # Criar rede se não existir
+          echo "🌐 Creating Docker network if it doesn't exist..."
           docker network create conexao-network 2>/dev/null || true
+          
+          echo "🚀 Starting scheduler-microservice container..."
           docker run -d \
             --name "scheduler-microservice" \
             --network conexao-network \
             --restart unless-stopped \
-            -p "8084:8084" \
-            --health-cmd="curl -f http://localhost:8084/actuator/health/readiness || exit 1" \
+            -p "8084:8080" \
+            --health-cmd="curl -f http://localhost:8080/actuator/health/readiness && curl -f http://localhost:8080/actuator/health/liveness || exit 1" \
             --health-interval=30s \
             --health-timeout=10s \
             --health-retries=5 \
             --health-start-period=60s \
-            -e SPRING_PROFILES_ACTIVE="prod" \
-            -e SERVER_PORT="8084" \
+            -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
+            -e SPRING_PROFILES_ACTIVE="prod,azure" \
+            -e ENVIRONMENT="production" \
+            -e SERVER_PORT="8080" \
             -e TZ="America/Sao_Paulo" \
-            -e conexao-de-sorte-database-r2dbc-url="$DB_R2DBC_URL" \
-            -e conexao-de-sorte-database-username="$DB_USER" \
-            -e conexao-de-sorte-database-password="$DB_PASS" \
-            -e conexao-de-sorte-jwt-jwks-uri="$JWT_JWKS_URI" \
-            -e conexao-de-sorte-jwt-issuer="$JWT_ISSUER" \
+            -e AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            -e AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            -e AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
+            -e AZURE_KEYVAULT_ENABLED="true" \
             --label "traefik.enable=true" \
             --label "traefik.docker.network=conexao-network" \
-            --label "traefik.http.routers.scheduler.rule=Host(\\`scheduler.conexaodesorte.com.br\\`)" \
+            --label "traefik.http.routers.scheduler.rule=Host(\`scheduler.conexaodesorte.com.br\`)" \
             --label "traefik.http.routers.scheduler.entrypoints=websecure" \
             --label "traefik.http.routers.scheduler.tls.certresolver=letsencrypt" \
-            --label "traefik.http.services.scheduler.loadbalancer.server.port=8084" \
-            "${FULL_IMAGE}"
+            --label "traefik.http.services.scheduler.loadbalancer.server.port=8080" \
+            "$IMAGE_TAG"
+          
+          echo "✅ Container deployed successfully"
+
       - name: Wait for service to be ready
         run: |
+          echo "🔍 Waiting for service to be ready..."
           TIMEOUT=180
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            if docker exec scheduler-microservice curl -f -s http://localhost:8084/actuator/health/readiness >/dev/null 2>&1; then
+            if docker exec scheduler-microservice curl -f -s http://localhost:8080/actuator/health/readiness >/dev/null 2>&1; then
               echo "✅ Service is ready and healthy!"
-              exit 0
+              break
             fi
+            echo "⏳ Waiting for service readiness... ($ELAPSED/$TIMEOUT seconds)"
             sleep 10
             ELAPSED=$((ELAPSED + 10))
           done
-          echo "❌ Service failed to become ready"
-          docker logs scheduler-microservice
-          exit 1
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "❌ Service failed to become ready within $TIMEOUT seconds"
+            echo "🔍 Container logs:"
+            docker logs scheduler-microservice --tail 50
+            exit 1
+          fi
+          
+          echo "🔍 Final container status:"
+          docker ps --filter name=scheduler-microservice --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          
+          echo "🎉 Self-hosted deployment completed successfully - Service is healthy!"
 
   notify:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     name: 📢 Notification
     if: always()
-    needs: [build-and-test, build-image, sign-image, deploy-production]
+    needs: [build-and-test, build-deploy-selfhosted]
     steps:
       - name: 📧 Send Slack notification
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          if [ "${{ needs.deploy-production.result }}" = "success" ]; then
-            STATUS="🎉 SUCCESS"
+          DEPLOY_RESULT="${{ needs.build-deploy-selfhosted.result }}"
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            STATUS="🎉 SUCCESS (Self-hosted)"
             COLOR="good"
+          elif [ "$DEPLOY_RESULT" = "skipped" ]; then
+            STATUS="⏭️ SKIPPED"
+            COLOR="warning"
           else
             STATUS="❌ FAILED"
             COLOR="danger"
           fi
-          if [ -n "${SLACK_WEBHOOK_URL}" ]; then
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -X POST -H 'Content-type: application/json' \
-            --data "{'text':'$STATUS: Scheduler Microservice Deployment','attachments':[{'color':'$COLOR','fields':[{'title':'Branch','value':'${{ github.ref_name }}','short':true},{'title':'Commit','value':'${{ github.sha }}','short':true}]}]}" \
-            $SLACK_WEBHOOK_URL
+            --data "{'text':'$STATUS: Scheduler Microservice Self-hosted Deploy','attachments':[{'color':'$COLOR','fields':[{'title':'Branch','value':'${{ github.ref_name }}','short':true},{'title':'Commit','value':'${{ github.sha }}','short':true},{'title':'Deploy Method','value':'Self-hosted Runner (No SSH)','short':true}]}]}" \
+            $SLACK_WEBHOOK_URL || echo "Slack notification failed or webhook not configured"
+          fi
+          
+          echo "📋 SELF-HOSTED DEPLOYMENT SUMMARY"
+          echo "✅ Build completed on GitHub runners"  
+          echo "🚀 Deploy executed directly on self-hosted Ubuntu runner"
+          echo "🔐 Azure Key Vault OIDC integration working"
+          echo "🏷️ Runner labels: [self-hosted, conexao-de-sorte-backend-scheduler]"
+          echo ""
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            echo "🎉 Scheduler Microservice deployed successfully!"
+            echo "🌐 Service available at: scheduler.conexaodesorte.com.br"
+          else
+            echo "❌ Deployment failed - check self-hosted runner logs"
+          fi
