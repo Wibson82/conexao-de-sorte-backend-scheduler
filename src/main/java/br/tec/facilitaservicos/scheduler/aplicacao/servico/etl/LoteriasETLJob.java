@@ -79,6 +79,11 @@ public class LoteriasETLJob {
         this.webClient = webClient;
         this.jobRepository = jobRepository;
         this.meterRegistry = meterRegistry;
+        
+        // Inicializar métricas
+        this.etlTimer = Timer.builder("etl.loterias.duracao")
+            .description("Duração do ETL de loterias")
+            .register(meterRegistry);
     }
     
     @Value("${scheduler.etl.loterias.timeout:30s}")
@@ -90,9 +95,7 @@ public class LoteriasETLJob {
     @Value("${scheduler.etl.loterias.user-agent:Scheduler-ETL/1.0}")
     private String userAgent;
     
-    private final Timer etlTimer = Timer.builder("etl.loterias.duracao")
-        .description("Duração do ETL de loterias")
-        .register(meterRegistry);
+    private Timer etlTimer;
 
     // URLs das loterias
     private static final Map<String, String> URLS_LOTERIAS = Map.of(
@@ -379,7 +382,7 @@ public class LoteriasETLJob {
     private Mono<JobR2dbc> marcarJobComoCompletado(JobR2dbc job) {
         job.setStatus(StatusJob.COMPLETADO);
         job.setCompletadoEm(LocalDateTime.now());
-        job.registrarSucesso();
+        job.registrarSucesso(System.currentTimeMillis() - job.getIniciadoEm().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli());
         job.setAtualizadoEm(LocalDateTime.now());
         return jobRepository.save(job);
     }
@@ -429,6 +432,60 @@ public class LoteriasETLJob {
         public void setProximoConcurso(LocalDateTime proximoConcurso) { this.proximoConcurso = proximoConcurso; }
         public String getOrigem() { return origem; }
         public void setOrigem(String origem) { this.origem = origem; }
+
+        // Builder pattern
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public static class Builder {
+            private String loteria;
+            private int concurso;
+            private LocalDateTime dataExtracao;
+            private int[] numeros;
+            private Map<String, String> premios;
+            private LocalDateTime proximoConcurso;
+            private String origem = "api-oficial";
+
+            public Builder loteria(String loteria) {
+                this.loteria = loteria;
+                return this;
+            }
+
+            public Builder concurso(int concurso) {
+                this.concurso = concurso;
+                return this;
+            }
+
+            public Builder dataExtracao(LocalDateTime dataExtracao) {
+                this.dataExtracao = dataExtracao;
+                return this;
+            }
+
+            public Builder numeros(int[] numeros) {
+                this.numeros = numeros;
+                return this;
+            }
+
+            public Builder premios(Map<String, String> premios) {
+                this.premios = premios;
+                return this;
+            }
+
+            public Builder proximoConcurso(LocalDateTime proximoConcurso) {
+                this.proximoConcurso = proximoConcurso;
+                return this;
+            }
+
+            public Builder origem(String origem) {
+                this.origem = origem;
+                return this;
+            }
+
+            public ResultadoLoteria build() {
+                return new ResultadoLoteria(loteria, concurso, dataExtracao, numeros, premios, proximoConcurso, origem);
+            }
+        }
 
         public String getNumerosFormatados() {
             if (numeros == null) return "N/A";

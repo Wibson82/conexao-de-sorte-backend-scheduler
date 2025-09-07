@@ -153,6 +153,34 @@ public class JobR2dbc {
     @Column("versao")
     private Integer versao;
 
+    // Campos para execução em tempo real
+    @Column("iniciado_em")
+    private LocalDateTime iniciadoEm;
+
+    @Column("completado_em") 
+    private LocalDateTime completadoEm;
+
+    @Column("timeout_em")
+    private LocalDateTime timeoutEm;
+
+    @Column("proximo_retry")
+    private LocalDateTime proximoRetry;
+
+    @Column("execucoes_ativas")
+    private Integer execucoesAtivas;
+
+    @Column("tentativas")
+    private Integer tentativas;
+
+    @Column("max_execucoes_concorrentes")
+    private Integer maxExecucoesConcorrentes;
+
+    @Column("duracao_execucao_ms")
+    private Long duracaoExecucaoMs;
+
+    @Column("agendado_para")
+    private LocalDateTime agendadoPara;
+
     // Construtores
 
     public JobR2dbc() {
@@ -169,6 +197,9 @@ public class JobR2dbc {
         this.circuitBreakerAberto = false;
         this.circuitBreakerFailures = 0;
         this.versao = 1;
+        this.execucoesAtivas = 0;
+        this.tentativas = 0;
+        this.maxExecucoesConcorrentes = 1;
     }
 
     private JobR2dbc(Builder builder) {
@@ -200,6 +231,9 @@ public class JobR2dbc {
         this.circuitBreakerAberto = false;
         this.circuitBreakerFailures = 0;
         this.versao = 1;
+        this.execucoesAtivas = 0;
+        this.tentativas = 0;
+        this.maxExecucoesConcorrentes = 1;
     }
 
     // Builder Pattern
@@ -466,6 +500,24 @@ public class JobR2dbc {
      */
     public void incrementarVersao() {
         this.versao++;
+    }
+
+    /**
+     * Calcula timeout em tempo real
+     */
+    public void calcularTimeoutEm() {
+        if (this.timeoutSegundos != null) {
+            this.timeoutEm = LocalDateTime.now().plusSeconds(this.timeoutSegundos);
+        }
+    }
+
+    /**
+     * Reset do circuit breaker
+     */
+    public void resetCircuitBreaker() {
+        this.circuitBreakerAberto = false;
+        this.circuitBreakerFailures = 0;
+        this.circuitBreakerProximoTeste = null;
     }
 
     // Getters e Setters completos
@@ -764,6 +816,80 @@ public class JobR2dbc {
 
     public void setVersao(Integer versao) {
         this.versao = versao;
+    }
+
+    // Getters e Setters dos novos campos
+
+    public LocalDateTime getIniciadoEm() {
+        return iniciadoEm;
+    }
+
+    public void setIniciadoEm(LocalDateTime iniciadoEm) {
+        this.iniciadoEm = iniciadoEm;
+    }
+
+    public LocalDateTime getCompletadoEm() {
+        return completadoEm;
+    }
+
+    public void setCompletadoEm(LocalDateTime completadoEm) {
+        this.completadoEm = completadoEm;
+    }
+
+    public LocalDateTime getTimeoutEm() {
+        return timeoutEm;
+    }
+
+    public void setTimeoutEm(LocalDateTime timeoutEm) {
+        this.timeoutEm = timeoutEm;
+    }
+
+    public LocalDateTime getProximoRetry() {
+        return proximoRetry;
+    }
+
+    public void setProximoRetry(LocalDateTime proximoRetry) {
+        this.proximoRetry = proximoRetry;
+    }
+
+    public Integer getExecucoesAtivas() {
+        return execucoesAtivas;
+    }
+
+    public void setExecucoesAtivas(Integer execucoesAtivas) {
+        this.execucoesAtivas = execucoesAtivas;
+    }
+
+    public Integer getTentativas() {
+        return tentativas;
+    }
+
+    public void setTentativas(Integer tentativas) {
+        this.tentativas = tentativas;
+    }
+
+    public Integer getMaxExecucoesConcorrentes() {
+        return maxExecucoesConcorrentes;
+    }
+
+    public void setMaxExecucoesConcorrentes(Integer maxExecucoesConcorrentes) {
+        this.maxExecucoesConcorrentes = maxExecucoesConcorrentes;
+    }
+
+    public Long getDuracaoExecucaoMs() {
+        return duracaoExecucaoMs;
+    }
+
+    public void setDuracaoExecucaoMs(Long duracaoExecucaoMs) {
+        this.duracaoExecucaoMs = duracaoExecucaoMs;
+    }
+
+    public LocalDateTime getAgendadoPara() {
+        return agendadoPara;
+    }
+
+    public void setAgendadoPara(LocalDateTime agendadoPara) {
+        this.agendadoPara = agendadoPara;
     }
 
     @Override

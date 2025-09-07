@@ -31,6 +31,48 @@ public class EstatisticasJobDto {
         this.duracaoMediaMs = duracaoMediaMs;
     }
 
+    // Builder pattern
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private Long total;
+        private Long concluidos;
+        private Long falhados;
+        private Long executando;
+        private Double duracaoMediaMs;
+
+        public Builder total(Long total) {
+            this.total = total;
+            return this;
+        }
+
+        public Builder concluidos(Long concluidos) {
+            this.concluidos = concluidos;
+            return this;
+        }
+
+        public Builder falhados(Long falhados) {
+            this.falhados = falhados;
+            return this;
+        }
+
+        public Builder executando(Long executando) {
+            this.executando = executando;
+            return this;
+        }
+
+        public Builder duracaoMediaMs(Double duracaoMediaMs) {
+            this.duracaoMediaMs = duracaoMediaMs;
+            return this;
+        }
+
+        public EstatisticasJobDto build() {
+            return new EstatisticasJobDto(total, concluidos, falhados, executando, duracaoMediaMs);
+        }
+    }
+
     // Getters e Setters
     public Long getTotal() { return total; }
     public void setTotal(Long total) { this.total = total; }

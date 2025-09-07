@@ -11,7 +11,7 @@ public class LocaleTimeConfig {
 
     @PostConstruct
     public void init() {
-        Locale.setDefault(new Locale("pt", "BR"));
+        Locale.setDefault(Locale.of("pt", "BR"));
         TimeZone.setDefault(TimeZone.getTimeZone("America/Sao_Paulo"));
     }
 }

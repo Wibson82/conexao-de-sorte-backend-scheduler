@@ -6,6 +6,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import reactor.core.publisher.Mono;
 
 /**
  * Configuração de segurança para o microserviço Scheduler.
@@ -31,7 +32,7 @@ public class SecurityConfig {
                 .jwt(jwt -> jwt
                     .jwtAuthenticationConverter(jwtAuthenticationToken -> {
                         // Converter authorities dos scopes JWT
-                        return jwtAuthenticationToken;
+                        return Mono.just(new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(jwtAuthenticationToken));
                     })
                 )
             )

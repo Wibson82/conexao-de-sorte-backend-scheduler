@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -81,34 +82,38 @@ public class JobService {
         this.quartzScheduler = quartzScheduler;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
+        
+        // Inicializar métricas
+        this.jobsCriados = Counter.builder("jobs.criados")
+            .description("Total de jobs criados")
+            .register(meterRegistry);
+        
+        this.jobsExecutados = Counter.builder("jobs.executados")
+            .description("Total de jobs executados")
+            .register(meterRegistry);
+        
+        this.jobsFalhados = Counter.builder("jobs.falhados")
+            .description("Total de jobs que falharam")
+            .register(meterRegistry);
+        
+        this.tempoExecucaoJobs = Timer.builder("jobs.tempo.execucao")
+            .description("Tempo de execução dos jobs")
+            .register(meterRegistry);
+        
+        // Gauge para jobs ativos
+        Gauge.builder("jobs.ativos", this, JobService::contarJobsAtivos)
+            .description("Número de jobs ativos")
+            .register(meterRegistry);
     }
     
     // Cache para jobs em execução
     private final Map<String, LocalDateTime> jobsEmExecucao = new ConcurrentHashMap<>();
     
-    // Métricas
-    private final Counter jobsCriados = Counter.builder("jobs.criados")
-        .description("Total de jobs criados")
-        .register(meterRegistry);
-    
-    private final Counter jobsExecutados = Counter.builder("jobs.executados")
-        .description("Total de jobs executados")
-        .register(meterRegistry);
-    
-    private final Counter jobsFalhados = Counter.builder("jobs.falhados")
-        .description("Total de jobs que falharam")
-        .register(meterRegistry);
-    
-    private final Timer tempoExecucaoJobs = Timer.builder("jobs.tempo.execucao")
-        .description("Tempo de execução dos jobs")
-        .register(meterRegistry);
-
-    // Gauge para jobs ativos
-    {
-        Gauge.builder("jobs.ativos", this, JobService::contarJobsAtivos)
-            .description("Número de jobs ativos")
-            .register(meterRegistry);
-    }
+    // Métricas (serão inicializadas no construtor)
+    private Counter jobsCriados;
+    private Counter jobsExecutados;
+    private Counter jobsFalhados;
+    private Timer tempoExecucaoJobs;
 
     // === OPERAÇÕES CRUD ===
 
@@ -414,7 +419,7 @@ public class JobService {
      */
     public Flux<Map<String, Object>> obterEstatisticasPorTipo(LocalDateTime dataInicio) {
         return jobRepository.getEstatisticasPorTipo(dataInicio)
-            .cast(Map.class);
+            .map(obj -> (Map<String, Object>) obj);
     }
 
     // === OPERAÇÕES DE LIMPEZA ===
@@ -443,7 +448,7 @@ public class JobService {
     // === MÉTODOS PRIVADOS - INTEGRAÇÃO QUARTZ ===
 
     private Mono<Void> agendarNoQuartz(JobR2dbc job) {
-        return Mono.fromCallable(() -> {
+        return Mono.fromRunnable(() -> {
                 try {
                     JobDetail jobDetail = JobBuilder.newJob(ExecutorJob.class)
                         .withIdentity(job.getId(), job.getGrupo())
@@ -465,16 +470,16 @@ public class JobService {
                     }
                     
                     quartzScheduler.scheduleJob(jobDetail, trigger);
-                    return null;
                 } catch (SchedulerException e) {
                     throw new RuntimeException("Erro ao agendar job no Quartz", e);
                 }
             })
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)));
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
+            .then();
     }
 
     private Mono<Void> executarNoQuartz(JobR2dbc job) {
-        return Mono.fromCallable(() -> {
+        return Mono.fromRunnable(() -> {
                 try {
                     JobKey jobKey = new JobKey(job.getId(), job.getGrupo());
                     if (quartzScheduler.checkExists(jobKey)) {
@@ -490,42 +495,38 @@ public class JobService {
                         quartzScheduler.addJob(jobDetail, false);
                         quartzScheduler.triggerJob(jobKey);
                     }
-                    return null;
                 } catch (SchedulerException e) {
                     throw new RuntimeException("Erro ao executar job no Quartz", e);
                 }
             })
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)));
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
+            .then();
     }
 
     private Mono<Void> cancelarNoQuartz(String jobId) {
-        return Mono.fromCallable(() -> {
+        return Mono.fromRunnable(() -> {
                 try {
                     quartzScheduler.interrupt(new JobKey(jobId));
-                    return null;
                 } catch (SchedulerException e) {
                     throw new RuntimeException("Erro ao cancelar job no Quartz", e);
                 }
             })
-            .onErrorResume(e -> {
-                log.warn("Não foi possível cancelar job no Quartz: {}", e.getMessage());
-                return Mono.empty();
-            });
+            .doOnError(e -> log.warn("Não foi possível cancelar job no Quartz: {}", e.getMessage()))
+            .onErrorReturn((Void) null)
+            .then();
     }
 
     private Mono<Void> removerJobDoQuartz(String jobId) {
-        return Mono.fromCallable(() -> {
+        return Mono.fromRunnable(() -> {
                 try {
                     quartzScheduler.deleteJob(new JobKey(jobId));
-                    return null;
                 } catch (SchedulerException e) {
                     throw new RuntimeException("Erro ao remover job do Quartz", e);
                 }
             })
-            .onErrorResume(e -> {
-                log.warn("Não foi possível remover job do Quartz: {}", e.getMessage());
-                return Mono.empty();
-            });
+            .doOnError(e -> log.warn("Não foi possível remover job do Quartz: {}", e.getMessage()))
+            .onErrorReturn((Void) null)
+            .then();
     }
 
     // === MÉTODOS UTILITÁRIOS ===
@@ -540,7 +541,7 @@ public class JobService {
         dto.setPrioridade(job.getPrioridade());
         dto.setGrupo(job.getGrupo());
         dto.setCronExpression(job.getCronExpression());
-        dto.setParametros(job.getParametros());
+        dto.setParametros(convertJsonToMap(job.getParametros()));
         dto.setTimeoutSegundos(job.getTimeoutSegundos());
         dto.setMaxTentativas(job.getMaxTentativas());
         dto.setTentativas(job.getTentativas());
@@ -577,6 +578,22 @@ public class JobService {
         } catch (Exception e) {
             log.warn("Erro ao converter parâmetros para JSON: {}", e.getMessage());
             return "{}";
+        }
+    }
+
+    /**
+     * Converte JSON string para Map
+     */
+    private Map<String, Object> convertJsonToMap(String parametrosJson) {
+        if (parametrosJson == null || parametrosJson.trim().isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            return objectMapper.readValue(parametrosJson, 
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>(){});
+        } catch (Exception e) {
+            log.warn("Erro ao converter JSON para parâmetros: {}", e.getMessage());
+            return new HashMap<>();
         }
     }
 

@@ -111,7 +111,7 @@ public class QuartzJobExecutor implements Job {
                             // Marcar como completado
                             jobAtualizado.setStatus(StatusJob.COMPLETADO);
                             jobAtualizado.setCompletadoEm(LocalDateTime.now());
-                            jobAtualizado.registrarSucesso();
+                            jobAtualizado.registrarSucesso(System.currentTimeMillis() - jobAtualizado.getIniciadoEm().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli());
                             jobAtualizado.setExecucoesAtivas(
                                 Math.max(0, jobAtualizado.getExecucoesAtivas() - 1));
                             jobAtualizado.setAtualizadoEm(LocalDateTime.now());
@@ -350,8 +350,17 @@ public class QuartzJobExecutor implements Job {
 
     private String extrairParametroString(br.tec.facilitaservicos.scheduler.dominio.entidade.JobR2dbc job, String chave) {
         if (job.getParametros() == null) return null;
-        Object valor = job.getParametros().get(chave);
-        return valor != null ? valor.toString() : null;
+        try {
+            // Parse do JSON e extração do parâmetro
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Map<String, Object> parametros = mapper.readValue(job.getParametros(), 
+                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>(){});
+            Object valor = parametros.get(chave);
+            return valor != null ? valor.toString() : null;
+        } catch (Exception e) {
+            log.warn("Erro ao parsear parâmetros do job {}: {}", job.getId(), e.getMessage());
+            return null;
+        }
     }
 
     private Integer extrairParametroInteiro(br.tec.facilitaservicos.scheduler.dominio.entidade.JobR2dbc job, String chave) {

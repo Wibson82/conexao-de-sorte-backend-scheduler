@@ -194,7 +194,7 @@ public class QuartzConfiguration {
         StdSchedulerFactory factory = new StdSchedulerFactory();
         try {
             factory.initialize(quartzProperties());
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             throw new RuntimeException("Erro ao inicializar Quartz SchedulerFactory", e);
         }
         return factory;
