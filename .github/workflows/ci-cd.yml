@@ -152,10 +152,10 @@ jobs:
           echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
           echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
           echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
-          echo "DB_HOST=$(get conexao-de-sorte-db-host)" >> $GITHUB_ENV
-          echo "DB_PORT=$(get conexao-de-sorte-db-port)" >> $GITHUB_ENV
-          echo "DB_USERNAME=$(get conexao-de-sorte-db-username)" >> $GITHUB_ENV
-          echo "DB_PASSWORD=$(get conexao-de-sorte-db-password)" >> $GITHUB_ENV
+          echo "DB_HOST=$(get conexao-de-sorte-database-host)" >> $GITHUB_ENV
+          echo "DB_PORT=$(get conexao-de-sorte-database-port)" >> $GITHUB_ENV
+          echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
           
           echo "✅ Azure Key Vault secrets loaded successfully" >&2
           
