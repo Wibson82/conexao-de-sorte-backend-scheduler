@@ -419,7 +419,14 @@ public class JobService {
      */
     public Flux<Map<String, Object>> obterEstatisticasPorTipo(LocalDateTime dataInicio) {
         return jobRepository.getEstatisticasPorTipo(dataInicio)
-            .map(obj -> (Map<String, Object>) obj);
+            .map(obj -> {
+                if (obj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> result = (Map<String, Object>) obj;
+                    return result;
+                }
+                return new HashMap<String, Object>();
+            });
     }
 
     // === OPERAÇÕES DE LIMPEZA ===

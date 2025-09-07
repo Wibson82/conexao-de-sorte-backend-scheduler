@@ -60,14 +60,14 @@ class LoteriasETLJobIntegrationTest {
 
     private void setupWireMockStubs() {
         // Stub para Mega Sena
-        wireMockServer.stubFor(get(urlPathContaining("megasena"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/megasena.*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "text/html")
                         .withBody(generateMockLoteriaHTML("2700", "01-05-12-23-35-42"))));
         
         // Stub para Quina
-        wireMockServer.stubFor(get(urlPathContaining("quina"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/quina.*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "text/html")
@@ -116,19 +116,19 @@ class LoteriasETLJobIntegrationTest {
         String jobId = UUID.randomUUID().toString();
         
         // Simular falhas temporárias
-        wireMockServer.stubFor(get(urlPathContaining("lotofacil"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/lotofacil.*"))
                 .inScenario("retry-test")
                 .whenScenarioStateIs("Started")
                 .willReturn(aResponse().withStatus(500))
                 .willSetStateTo("attempt-1"));
         
-        wireMockServer.stubFor(get(urlPathContaining("lotofacil"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/lotofacil.*"))
                 .inScenario("retry-test")
                 .whenScenarioStateIs("attempt-1")
                 .willReturn(aResponse().withStatus(500))
                 .willSetStateTo("attempt-2"));
         
-        wireMockServer.stubFor(get(urlPathContaining("lotofacil"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/lotofacil.*"))
                 .inScenario("retry-test")
                 .whenScenarioStateIs("attempt-2")
                 .willReturn(aResponse()
@@ -142,13 +142,13 @@ class LoteriasETLJobIntegrationTest {
                 .verifyComplete();
 
         // Verificar que foram feitas múltiplas tentativas
-        wireMockServer.verify(moreThan(2), getRequestedFor(urlPathContaining("lotofacil")));
+        wireMockServer.verify(moreThan(2), getRequestedFor(urlPathMatching(".*/lotofacil.*")));
     }
 
     @Test
     void deveAbrirCircuitBreakerAposFalhasConsecutivas() {
         // Simular falhas consecutivas para abrir o circuit breaker
-        wireMockServer.stubFor(get(urlPathContaining("lotomania"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/lotomania.*"))
                 .willReturn(aResponse().withStatus(500)));
 
         String jobId1 = UUID.randomUUID().toString();
@@ -184,7 +184,7 @@ class LoteriasETLJobIntegrationTest {
     @Test
     void deveRespeitarTimeoutGlobal() {
         // Simular delay maior que o timeout
-        wireMockServer.stubFor(get(urlPathContaining("quina"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/quina.*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withFixedDelay(35000) // 35 segundos

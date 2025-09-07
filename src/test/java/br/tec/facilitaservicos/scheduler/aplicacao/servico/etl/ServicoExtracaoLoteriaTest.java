@@ -61,7 +61,7 @@ class ServicoExtracaoLoteriaTest {
     @Test
     void deveExtrairResultadosComSucesso() {
         // Configurar mock da API da Caixa
-        wireMockServer.stubFor(get(urlPathContaining("/loterias"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/loterias.*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "text/html")
@@ -87,13 +87,13 @@ class ServicoExtracaoLoteriaTest {
                 .verifyComplete();
 
         // Verificar que a requisição foi feita
-        wireMockServer.verify(getRequestedFor(urlPathContaining("/loterias")));
+        wireMockServer.verify(getRequestedFor(urlPathMatching(".*/loterias.*")));
     }
 
     @Test
     void deveRetornarErroQuandoServicoIndisponivel() {
         // Simular erro 500
-        wireMockServer.stubFor(get(urlPathContaining("/loterias"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/loterias.*"))
                 .willReturn(aResponse()
                         .withStatus(500)
                         .withBody("Internal Server Error")));
@@ -106,7 +106,7 @@ class ServicoExtracaoLoteriaTest {
     @Test
     void deveRespeitarTimeoutConfigurado() {
         // Simular timeout
-        wireMockServer.stubFor(get(urlPathContaining("/loterias"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/loterias.*"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withFixedDelay(35000) // 35 segundos - maior que timeout de 30s
@@ -120,7 +120,7 @@ class ServicoExtracaoLoteriaTest {
     @Test
     void deveRealizarRetryQuandoErro5xx() {
         // Primeira tentativa: 500, segunda tentativa: 200
-        wireMockServer.stubFor(get(urlPathContaining("/loterias"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/loterias.*"))
                 .inScenario("retry-scenario")
                 .whenScenarioStateIs("Started")
                 .willReturn(aResponse()
@@ -128,7 +128,7 @@ class ServicoExtracaoLoteriaTest {
                         .withBody("Internal Server Error"))
                 .willSetStateTo("first-attempt"));
 
-        wireMockServer.stubFor(get(urlPathContaining("/loterias"))
+        wireMockServer.stubFor(get(urlPathMatching(".*/loterias.*"))
                 .inScenario("retry-scenario")
                 .whenScenarioStateIs("first-attempt")
                 .willReturn(aResponse()
@@ -141,6 +141,6 @@ class ServicoExtracaoLoteriaTest {
                 .verifyComplete();
 
         // Verificar que foram feitas 2 requisições
-        wireMockServer.verify(2, getRequestedFor(urlPathContaining("/loterias")));
+        wireMockServer.verify(2, getRequestedFor(urlPathMatching(".*/loterias.*")));
     }
 }
