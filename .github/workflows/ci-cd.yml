@@ -30,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: "Guard: forbid r2dbc:h2 outside tests"
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           FOUND=$(grep -R --line-number --include='*.yml' --include='*.properties' --include='*.yaml' "r2dbc:h2" src || true)
@@ -39,6 +40,7 @@ jobs:
             exit 1
           fi
       - name: "Guard: H2 not in non-test scopes"
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           mvn -B -q dependency:list -DincludeScope=compile -DoutputFile=dep.txt -DappendOutput=true || true
@@ -47,32 +49,42 @@ jobs:
             exit 1
           fi
       - name: Check self-hosted runner availability
+        timeout-minutes: 10
         run: |
           echo "🔍 Checking GitHub Runner labels and environment..."
           echo "Runner OS: $RUNNER_OS"
           echo "Runner Architecture: $RUNNER_ARCH"
-          echo "Available Labels: self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler"
+          echo "Expected Labels: [self-hosted, conexao-de-sorte-backend-scheduler]"
+          echo "Note: This validation runs on GitHub runners, actual deployment uses self-hosted runners"
+          echo "⚠️ Verify that the self-hosted runner is registered with exactly these labels:"
+          echo "  - self-hosted"
+          echo "  - conexao-de-sorte-backend-scheduler"
+          echo "📋 Runner registration command should include: --labels self-hosted,conexao-de-sorte-backend-scheduler"
 
   build-and-test:
     needs: validate-environment
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     name: 🏗️ Build and Test on GitHub Runners
     steps:
       - uses: actions/checkout@v4
       - name: Setup Java 24
+        timeout-minutes: 10
         uses: actions/setup-java@v4
         with:
           java-version: '24'
           distribution: 'temurin'
           cache: maven
       - name: Verify Maven wrapper
+        timeout-minutes: 10
         run: |
           chmod +x ./mvnw
           ./mvnw --version
       - name: Build application (skip tests)
+        timeout-minutes: 10
         run: ./mvnw clean package -DskipTests
       - name: Upload JAR artifact for self-hosted runner
+        timeout-minutes: 10
         uses: actions/upload-artifact@v4
         with:
           name: scheduler-microservice-jar
@@ -80,8 +92,8 @@ jobs:
           retention-days: 1
 
   build-deploy-selfhosted:
-    runs-on: [self-hosted, conexao-de-sorte-backend-scheduler]
-    timeout-minutes: 45
+    runs-on: [self-hosted]
+    timeout-minutes: 10
     name: 🚀 Build & Deploy on Self-hosted Runner (Ubuntu)
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
