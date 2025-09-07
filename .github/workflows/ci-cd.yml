@@ -81,7 +81,7 @@ jobs:
 
   build-deploy-selfhosted:
     runs-on: [self-hosted, scheduler-service]
-    timeout-minutes: 80 # Step timeouts: 10 * 8
+    timeout-minutes: 100 # Step timeouts: 10 + 10 + 10 + 10 + 10 + 30 + 10 + 10
     name: 🚀 Build & Deploy on Self-hosted Runner (Ubuntu)
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
@@ -180,7 +180,7 @@ jobs:
 
       - name: 🐳 Build Docker image (Local - Self-hosted)
         id: build
-        timeout-minutes: 10
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           TAG="${{ env.SERVICE_NAME }}:$(date +'%Y-%m-%d-%H%M%S')"
