@@ -1,4 +1,4 @@
-name: ⏰ Scheduler Microservice - CI/CD Pipeline (Self-hosted Runners)
+name: 🔐 Scheduler - CI/CD Pipeline (Self-hosted Runners)
 
 on:
   push:
@@ -25,7 +25,7 @@ concurrency:
 jobs:
   validate-environment:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20 # Step timeouts: 10 + 10
     name: ✅ Validate Build Environment
     steps:
       - uses: actions/checkout@v4
@@ -44,27 +44,15 @@ jobs:
         run: |
           set -euo pipefail
           mvn -B -q dependency:list -DincludeScope=compile -DoutputFile=dep.txt -DappendOutput=true || true
-          if grep -E "com\.h2database:h2|io\.r2dbc:r2dbc-h2" dep.txt; then
+          if grep -E "com.h2database:h2|io.r2dbc:r2dbc-h2" dep.txt; then
             echo "H2 present in non-test scope (compile/runtime)" >&2
             exit 1
           fi
-      - name: Check self-hosted runner availability
-        timeout-minutes: 10
-        run: |
-          echo "🔍 Checking GitHub Runner labels and environment..."
-          echo "Runner OS: $RUNNER_OS"
-          echo "Runner Architecture: $RUNNER_ARCH"
-          echo "Expected Labels: [self-hosted, conexao-de-sorte-backend-scheduler]"
-          echo "Note: This validation runs on GitHub runners, actual deployment uses self-hosted runners"
-          echo "⚠️ Verify that the self-hosted runner is registered with exactly these labels:"
-          echo "  - self-hosted"
-          echo "  - conexao-de-sorte-backend-scheduler"
-          echo "📋 Runner registration command should include: --labels self-hosted,conexao-de-sorte-backend-scheduler"
 
   build-and-test:
     needs: validate-environment
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40 # Step timeouts: 10 + 10 + 10 + 10
     name: 🏗️ Build and Test on GitHub Runners
     steps:
       - uses: actions/checkout@v4
@@ -87,13 +75,13 @@ jobs:
         timeout-minutes: 10
         uses: actions/upload-artifact@v4
         with:
-          name: scheduler-microservice-jar
+          name: scheduler-jar
           path: target/*.jar
           retention-days: 1
 
   build-deploy-selfhosted:
-    runs-on: [self-hosted]
-    timeout-minutes: 10
+    runs-on: [self-hosted, conexao-de-sorte-backend-scheduler]
+    timeout-minutes: 80 # Step timeouts: 10 * 8
     name: 🚀 Build & Deploy on Self-hosted Runner (Ubuntu)
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
@@ -104,6 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Verificar ambiente do self-hosted runner
+        timeout-minutes: 10
         run: |
           echo "🔍 Verificando ambiente do self-hosted runner..."
           echo "🏃 Runner: $(hostname)"
@@ -118,12 +107,14 @@ jobs:
           java -version || echo "Java não encontrado via PATH"
           
       - name: Download JAR artifact from GitHub runners
+        timeout-minutes: 10
         uses: actions/download-artifact@v4
         with:
-          name: scheduler-microservice-jar
+          name: scheduler-jar
           path: ./target
           
       - name: Azure Login (OIDC) no self-hosted runner
+        timeout-minutes: 10
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -132,6 +123,7 @@ jobs:
 
       - name: Fetch Azure Key Vault secrets
         id: kv
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
@@ -144,7 +136,7 @@ jobs:
           fi
           
           echo "Loading secrets from Azure Key Vault: $VAULT" >&2
-          get() { 
+          get() {
             echo "Fetching secret: $1" >&2
             SECRET_VALUE=$(az keyvault secret show --vault-name "$VAULT" --name "$1" --query value -o tsv 2>/dev/null)
             if [ $? -ne 0 ] || [ -z "$SECRET_VALUE" ]; then
@@ -154,48 +146,49 @@ jobs:
             echo "$SECRET_VALUE"
           }
           
-          # Scheduler specific secrets
-          echo "DATABASE_URL=$(get conexao-de-sorte-database-url)" >> $GITHUB_ENV
-          echo "DATABASE_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
-          echo "DATABASE_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          # Common secrets
+          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
+          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
           echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
           echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          echo "DB_HOST=$(get conexao-de-sorte-db-host)" >> $GITHUB_ENV
+          echo "DB_PORT=$(get conexao-de-sorte-db-port)" >> $GITHUB_ENV
+          echo "DB_USERNAME=$(get conexao-de-sorte-db-username)" >> $GITHUB_ENV
+          echo "DB_PASSWORD=$(get conexao-de-sorte-db-password)" >> $GITHUB_ENV
           
           echo "✅ Azure Key Vault secrets loaded successfully" >&2
           
       - name: 🧹 Clean old containers
+        timeout-minutes: 10
         run: |
           set -euo pipefail
-          echo "🧹 Cleaning old scheduler-microservice containers..."
+          CONTAINER_NAME="${{ env.SERVICE_NAME }}-microservice"
+          echo "🧹 Cleaning old $CONTAINER_NAME containers..."
           
-          if docker ps -a --format '{{.Names}}' | grep -q '^scheduler-microservice$'; then
-            echo '🛑 Stopping container: scheduler-microservice'
-            docker stop 'scheduler-microservice' || true
-            echo '🗑️ Removing container: scheduler-microservice'
-            docker rm 'scheduler-microservice' || true
+          if docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+            echo "🛑 Stopping container: $CONTAINER_NAME"
+            docker stop "$CONTAINER_NAME" || true
+            echo "🗑️ Removing container: $CONTAINER_NAME"
+            docker rm "$CONTAINER_NAME" || true
           else
-            echo '✅ No scheduler-microservice container found'
+            echo "✅ No $CONTAINER_NAME container found"
           fi
           
-          # Remover imagens antigas do scheduler
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep "^wibson82/conexao-de-sorte-backend-scheduler:" | head -n -1 | xargs -r docker rmi || true
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep "^${{ env.SERVICE_NAME }}:" | head -n -1 | xargs -r docker rmi || true
           echo "✅ Container cleanup completed"
 
       - name: 🐳 Build Docker image (Local - Self-hosted)
         id: build
+        timeout-minutes: 10
         run: |
           set -euo pipefail
-          TAG="wibson82/conexao-de-sorte-backend-scheduler:$(date +'%Y-%m-%d-%H%M%S')"
+          TAG="${{ env.SERVICE_NAME }}:$(date +'%Y-%m-%d-%H%M%S')"
           
           echo "🏗️ Building Docker image locally on self-hosted runner: $TAG"
           docker build \
             --platform linux/amd64 \
             --tag "$TAG" \
-            --build-arg CONEXAO_DE_SORTE_DATABASE_URL="${{ env.DATABASE_URL }}" \
-            --build-arg CONEXAO_DE_SORTE_DATABASE_USERNAME="${{ env.DATABASE_USERNAME }}" \
-            --build-arg CONEXAO_DE_SORTE_DATABASE_PASSWORD="${{ env.DATABASE_PASSWORD }}" \
-            --build-arg CONEXAO_DE_SORTE_JWT_ISSUER="${{ env.JWT_ISSUER }}" \
-            --build-arg CONEXAO_DE_SORTE_JWT_JWKS_URI="${{ env.JWT_JWKS_URI }}" \
             --build-arg SERVICE_NAME="${{ env.SERVICE_NAME }}" \
             --build-arg BUILD_DATE="${{ github.event.head_commit.timestamp || github.run_id }}" \
             --build-arg VCS_REF="${{ github.sha }}" \
@@ -206,18 +199,19 @@ jobs:
           echo "✅ Image built locally on self-hosted runner (NO REGISTRY)"
 
       - name: 🚀 Deploy container directly
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           IMAGE_TAG="${{ steps.build.outputs.image_tag }}"
+          CONTAINER_NAME="${{ env.SERVICE_NAME }}-microservice"
+          DB_NAME="db_${{ env.SERVICE_NAME//-/_ }}"
           export TZ=America/Sao_Paulo
           
-          # Criar rede se não existir
-          echo "🌐 Creating Docker network if it doesn't exist..."
           docker network create conexao-network 2>/dev/null || true
           
-          echo "🚀 Starting scheduler-microservice container..."
+          echo "🚀 Starting $CONTAINER_NAME container..."
           docker run -d \
-            --name "scheduler-microservice" \
+            --name "$CONTAINER_NAME" \
             --network conexao-network \
             --restart unless-stopped \
             -p "8084:8080" \
@@ -228,30 +222,42 @@ jobs:
             --health-start-period=60s \
             -e JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Dfile.encoding=UTF-8" \
             -e SPRING_PROFILES_ACTIVE="prod,azure" \
-            -e ENVIRONMENT="production" \
             -e SERVER_PORT="8080" \
             -e TZ="America/Sao_Paulo" \
             -e AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
             -e AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
             -e AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
             -e AZURE_KEYVAULT_ENABLED="true" \
+            -e SPRING_DATASOURCE_R2DBC_URL="r2dbc:mysql://${{ env.DB_HOST }}:${{ env.DB_PORT }}/$DB_NAME" \
+            -e SPRING_DATASOURCE_R2DBC_USERNAME="${{ env.DB_USERNAME }}" \
+            -e SPRING_DATASOURCE_R2DBC_PASSWORD="${{ env.DB_PASSWORD }}" \
+            -e SPRING_FLYWAY_URL="jdbc:mysql://${{ env.DB_HOST }}:${{ env.DB_PORT }}/$DB_NAME" \
+            -e SPRING_FLYWAY_USER="${{ env.DB_USERNAME }}" \
+            -e SPRING_FLYWAY_PASSWORD="${{ env.DB_PASSWORD }}" \
+            -e SPRING_REDIS_HOST="${{ env.REDIS_HOST }}" \
+            -e SPRING_REDIS_PORT="${{ env.REDIS_PORT }}" \
+            -e SPRING_REDIS_PASSWORD="${{ env.REDIS_PASSWORD }}" \
+            -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="${{ env.JWT_ISSUER }}" \
+            -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI="${{ env.JWT_JWKS_URI }}" \
             --label "traefik.enable=true" \
             --label "traefik.docker.network=conexao-network" \
-            --label "traefik.http.routers.scheduler.rule=Host(\`scheduler.conexaodesorte.com.br\`)" \
-            --label "traefik.http.routers.scheduler.entrypoints=websecure" \
-            --label "traefik.http.routers.scheduler.tls.certresolver=letsencrypt" \
-            --label "traefik.http.services.scheduler.loadbalancer.server.port=8080" \
+            --label "traefik.http.routers.${{ env.SERVICE_NAME }}.rule=Host(\"${{ env.SERVICE_NAME }}.conexaodesorte.com.br\")" \
+            --label "traefik.http.routers.${{ env.SERVICE_NAME }}.entrypoints=websecure" \
+            --label "traefik.http.routers.${{ env.SERVICE_NAME }}.tls.certresolver=letsencrypt" \
+            --label "traefik.http.services.${{ env.SERVICE_NAME }}.loadbalancer.server.port=8080" \
             "$IMAGE_TAG"
           
           echo "✅ Container deployed successfully"
 
       - name: Wait for service to be ready
+        timeout-minutes: 10
         run: |
+          CONTAINER_NAME="${{ env.SERVICE_NAME }}-microservice"
           echo "🔍 Waiting for service to be ready..."
           TIMEOUT=180
           ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            if docker exec scheduler-microservice curl -f -s http://localhost:8080/actuator/health/readiness >/dev/null 2>&1; then
+            if docker exec $CONTAINER_NAME curl -f -s http://localhost:8080/actuator/health/readiness >/dev/null 2>&1; then
               echo "✅ Service is ready and healthy!"
               break
             fi
@@ -263,12 +269,12 @@ jobs:
           if [ $ELAPSED -ge $TIMEOUT ]; then
             echo "❌ Service failed to become ready within $TIMEOUT seconds"
             echo "🔍 Container logs:"
-            docker logs scheduler-microservice --tail 50
+            docker logs $CONTAINER_NAME --tail 50
             exit 1
           fi
           
           echo "🔍 Final container status:"
-          docker ps --filter name=scheduler-microservice --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          docker ps --filter name=$CONTAINER_NAME --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
           
           echo "🎉 Self-hosted deployment completed successfully - Service is healthy!"
 
@@ -281,6 +287,7 @@ jobs:
     steps:
       - name: 📧 Send Slack notification
         if: always()
+        timeout-minutes: 10
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
@@ -297,19 +304,6 @@ jobs:
           fi
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             curl -X POST -H 'Content-type: application/json' \
-            --data "{'text':'$STATUS: Scheduler Microservice Self-hosted Deploy','attachments':[{'color':'$COLOR','fields':[{'title':'Branch','value':'${{ github.ref_name }}','short':true},{'title':'Commit','value':'${{ github.sha }}','short':true},{'title':'Deploy Method','value':'Self-hosted Runner (No SSH)','short':true}]}]}" \
+            --data "{'text':'$STATUS: Scheduler Self-hosted Deploy','attachments':[{'color':'$COLOR','fields':[{'title':'Branch','value':'${{ github.ref_name }}','short':true},{'title':'Commit','value':'${{ github.sha }}','short':true},{'title':'Deploy Method','value':'Self-hosted Runner (No SSH)','short':true}]}]}" \
             $SLACK_WEBHOOK_URL || echo "Slack notification failed or webhook not configured"
-          fi
-          
-          echo "📋 SELF-HOSTED DEPLOYMENT SUMMARY"
-          echo "✅ Build completed on GitHub runners"  
-          echo "🚀 Deploy executed directly on self-hosted Ubuntu runner"
-          echo "🔐 Azure Key Vault OIDC integration working"
-          echo "🏷️ Runner labels: [self-hosted, conexao-de-sorte-backend-scheduler]"
-          echo ""
-          if [ "$DEPLOY_RESULT" = "success" ]; then
-            echo "🎉 Scheduler Microservice deployed successfully!"
-            echo "🌐 Service available at: scheduler.conexaodesorte.com.br"
-          else
-            echo "❌ Deployment failed - check self-hosted runner logs"
           fi
