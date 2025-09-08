@@ -8,6 +8,10 @@ server:
 spring:
   application:
     name: conexao-scheduler
+  
+  profiles:
+    default: prod
+    active: prod
   main:
     web-application-type: reactive
   codec:
