@@ -1,8 +1,8 @@
 # =============================================================================
-# CONFIGURAÇÃO AZURE KEY VAULT - AUTENTICAÇÃO MICROSERVICE
+# CONFIGURAÇÃO AZURE KEY VAULT - SCHEDULER MICROSERVICE
 # =============================================================================
-# Microserviço responsável pela autenticação e geração de tokens JWT
-# Segredos necessários: JWT (GERAÇÃO E VALIDAÇÃO), Database, OAuth2, Criptografia
+# Microserviço responsável pelo agendamento e ETL de loterias
+# Segredos necessários: Database, Redis, JWT (VALIDAÇÃO), CORS, SSL
 # =============================================================================
 
 spring:
@@ -18,6 +18,10 @@ spring:
       keyvault:
         secret:
           enabled: false  # Usando configuração manual AzureKeyVaultConfig
+      profile:
+        tenant-id: ${AZURE_TENANT_ID:}
+        subscription-id: ${AZURE_SUBSCRIPTION_ID:}
+        client-id: ${AZURE_CLIENT_ID:}
 
   # ===== REDIS CONFIGURATION =====
   data:
@@ -41,67 +45,31 @@ user-service:
 # ===== MICROSERVICE SPECIFIC CONFIG =====
 app:
   microservice:
-    name: autenticacao
+    name: scheduler
     version: @project.version@
-    description: "Microserviço de autenticação e autorização"
+    description: "Microserviço de agendamento e ETL de loterias"
   
   # JWT Configuration - GERAÇÃO E VALIDAÇÃO COMPLETA
-  jwt:
-    # Chaves para geração e assinatura de tokens (via Azure Key Vault)
-    signing-key: ${conexao-de-sorte-jwt-signing-key:}
-    verification-key: ${conexao-de-sorte-jwt-verification-key:}
-    key-id: ${conexao-de-sorte-jwt-key-id:}
-    secret: ${conexao-de-sorte-jwt-secret:}
-    
-    # Configurações de token
-    issuer: https://conexaodesorte.com.br
-    audience: conexao-de-sorte-frontend-app
-    algorithm: RS256
-    expiration: 86400  # 24 horas
-    refresh-expiration: 604800  # 7 dias
-    
-    # Configurações de segurança
-    validation:
-      enabled: true
-      strict-mode: true
-      require-expiration: true
-      clock-skew: PT30S
-    
-    # Configurações de rotação (apenas para microserviço auth)
-    rotation:
-      enabled: true
-      interval-hours: 24
-      backup-versions: 5
-      transition-period: PT2H
-
-  # Criptografia - Chave mestre
-  encryption:
-    master-key: ${conexao-de-sorte-encryption-master-key:}
-    algorithm: AES-256-GCM
-    key-derivation: PBKDF2WithHmacSHA256
-    iterations: 100000
-
-  # OAuth2 Configuration
-  oauth2:
-    client-id: ${conexao-de-sorte-oauth2-client-id:}
-    # OIDC-only: sem client-secret
-    # client-secret: (não utilizar)
-    redirect-uri: https://conexaodesorte.com.br/oauth2/callback
-    scopes: openid,profile,email
-    
-  # Security Configuration
+  # JWT Configuration - VALIDAÇÃO APENAS (não gera tokens)
   security:
-    session:
-      timeout: PT30M
-      max-concurrent-sessions: 3
-    password:
-      min-length: 8
-      require-special-chars: true
-      require-numbers: true
-      require-uppercase: true
-    rate-limiting:
-      login-attempts: 5
-      lockout-duration: PT15M
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${conexao-de-sorte-jwt-issuer:https://auth.conexaodesorte.com}
+          jwk-set-uri: ${conexao-de-sorte-jwt-jwks-uri:}
+
+  # CORS Configuration
+  cors:
+    allowed-origins: ${conexao-de-sorte-cors-allowed-origins:*}
+    allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
+    
+  # Scheduler Configuration
+  scheduler:
+    etl:
+      loterias:
+        enabled: true
+        backoff-ms: 2000
+        max-retries: 5
 
 # ===== LOGGING =====
 logging:
@@ -121,7 +89,7 @@ management:
       exclude: env,configprops,beans,conditions,mappings,threaddump,heapdump,startup
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: when-authorized
       roles: ADMIN
     info:
       enabled: true

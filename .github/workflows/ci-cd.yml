@@ -146,16 +146,31 @@ jobs:
             echo "$SECRET_VALUE"
           }
           
-          # Common secrets
-          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
-          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
-          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
-          echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
-          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          # Database secrets
+          echo "DB_R2DBC_URL=$(get conexao-de-sorte-database-r2dbc-url)" >> $GITHUB_ENV
+          echo "DB_JDBC_URL=$(get conexao-de-sorte-database-jdbc-url)" >> $GITHUB_ENV
           echo "DB_HOST=$(get conexao-de-sorte-database-host)" >> $GITHUB_ENV
           echo "DB_PORT=$(get conexao-de-sorte-database-port)" >> $GITHUB_ENV
           echo "DB_USERNAME=$(get conexao-de-sorte-database-username)" >> $GITHUB_ENV
           echo "DB_PASSWORD=$(get conexao-de-sorte-database-password)" >> $GITHUB_ENV
+          
+          # Redis secrets
+          echo "REDIS_HOST=$(get conexao-de-sorte-redis-host)" >> $GITHUB_ENV
+          echo "REDIS_PORT=$(get conexao-de-sorte-redis-port)" >> $GITHUB_ENV
+          echo "REDIS_PASSWORD=$(get conexao-de-sorte-redis-password)" >> $GITHUB_ENV
+          echo "REDIS_DATABASE=$(get conexao-de-sorte-redis-database)" >> $GITHUB_ENV
+          
+          # JWT secrets (para validação)
+          echo "JWT_ISSUER=$(get conexao-de-sorte-jwt-issuer)" >> $GITHUB_ENV
+          echo "JWT_JWKS_URI=$(get conexao-de-sorte-jwt-jwks-uri)" >> $GITHUB_ENV
+          
+          # CORS secrets
+          echo "CORS_ALLOWED_ORIGINS=$(get conexao-de-sorte-cors-allowed-origins)" >> $GITHUB_ENV
+          echo "CORS_ALLOW_CREDENTIALS=$(get conexao-de-sorte-cors-allow-credentials)" >> $GITHUB_ENV
+          
+          # SSL secrets (se necessário)
+          SSL_ENABLED=$(az keyvault secret show --vault-name "$VAULT" --name "conexao-de-sorte-ssl-enabled" --query value -o tsv 2>/dev/null || echo "false")
+          echo "SSL_ENABLED=$SSL_ENABLED" >> $GITHUB_ENV
           
           echo "✅ Azure Key Vault secrets loaded successfully" >&2
           
@@ -241,8 +256,12 @@ jobs:
             -e SPRING_REDIS_HOST="${{ env.REDIS_HOST }}" \
             -e SPRING_REDIS_PORT="${{ env.REDIS_PORT }}" \
             -e SPRING_REDIS_PASSWORD="${{ env.REDIS_PASSWORD }}" \
+            -e SPRING_REDIS_DATABASE="${{ env.REDIS_DATABASE }}" \
             -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="${{ env.JWT_ISSUER }}" \
             -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI="${{ env.JWT_JWKS_URI }}" \
+            -e CORS_ALLOWED_ORIGINS="${{ env.CORS_ALLOWED_ORIGINS }}" \
+            -e CORS_ALLOW_CREDENTIALS="${{ env.CORS_ALLOW_CREDENTIALS }}" \
+            -e SSL_ENABLED="${{ env.SSL_ENABLED }}" \
             --label "traefik.enable=true" \
             --label "traefik.docker.network=conexao-network" \
             --label "traefik.http.routers.${{ env.SERVICE_NAME }}.rule=Host(\"`${{ env.SERVICE_NAME }}.conexaodesorte.com.br`\")" \

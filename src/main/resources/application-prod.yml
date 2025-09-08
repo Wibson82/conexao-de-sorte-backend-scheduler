@@ -1,8 +1,10 @@
-# ===============================================================================
-# CONFIGURAÇÃO DE PRODUÇÃO - MICROSERVIÇO AUTENTICAÇÃO
-# ===============================================================================
-# Este arquivo deve ser usado APENAS em ambiente de produção
-# Todas as credenciais devem vir de variáveis de ambiente ou secrets
+# =============================================================================
+# CONFIGURAÇÃO DE PRODUÇÃO - MICROSERVIÇO SCHEDULER
+# =============================================================================
+# Ambiente: Produção (Azure Container Instances)
+# Segredos: Azure Key Vault
+# Observabilidade: Application Insights + Prometheus
+# =============================================================================
 
 spring:
   config:
@@ -14,29 +16,25 @@ spring:
   application:
     name: conexao-de-sorte-auth
     
-  # Configuração reativa de banco de dados
+  # ===== DATABASE CONFIGURATION =====
   r2dbc:
-    url: ${DB_URL:r2dbc:mysql://mysql-prod:3306/conexao_sorte_auth}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${conexao-de-sorte-database-r2dbc-url:r2dbc:mysql://localhost:3306/conexao_de_sorte_scheduler}
+    username: ${conexao-de-sorte-database-username:scheduler_user}
+    password: ${conexao-de-sorte-database-password:}
     pool:
-      enabled: true
-      initial-size: 15
-      max-size: 100
-      max-idle-time: 20m
-      max-acquire-time: 30s
-      validation-query: "SELECT 1"
+      initial-size: 5
+      max-size: 20
+      max-idle-time: PT30M
+      validation-query: SELECT 1
       
-  # Flyway para migrations
+  # ===== FLYWAY CONFIGURATION =====
   flyway:
-    enabled: true
-    url: ${FLYWAY_URL:jdbc:mysql://mysql-prod:3306/conexao_sorte_auth}
-    user: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${conexao-de-sorte-database-jdbc-url:jdbc:mysql://localhost:3306/conexao_de_sorte_scheduler}
+    user: ${conexao-de-sorte-database-username:scheduler_user}
+    password: ${conexao-de-sorte-database-password:}
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
-    clean-disabled: true
     
   # Redis para cache reativo
   data:
@@ -145,14 +143,15 @@ management:
     ratelimiters:
       enabled: true
   metrics:
-    export:
-      prometheus:
-        enabled: true
     distribution:
       percentiles-histogram:
         http.server.requests: true
       sla:
         http.server.requests: 50ms,100ms,200ms,500ms
+  prometheus:
+    metrics:
+      export:
+        enabled: true
         
 # Resilience4j
 resilience4j:
