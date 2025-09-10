@@ -274,6 +274,21 @@ jobs:
           echo "CORS_ALLOWED_ORIGINS=$CORS_ALLOWED_ORIGINS" >> $GITHUB_ENV
           echo "CORS_ALLOW_CREDENTIALS=$CORS_ALLOW_CREDENTIALS" >> $GITHUB_ENV
 
+      - name: 🧹 Cleanup existing deployment
+        run: |
+          # Remove stack existente se houver
+          docker stack rm conexao-scheduler 2>/dev/null || true
+          
+          # Aguardar limpeza completa
+          echo "⏳ Aguardando limpeza completa..."
+          sleep 15
+          
+          # Limpar containers órfãos do serviço scheduler
+          docker container ls -q --filter "name=scheduler" | xargs -r docker stop
+          docker container ls -aq --filter "name=scheduler" | xargs -r docker rm
+          
+          echo "✅ Limpeza concluída"
+
       - name: Deploy via docker stack
         run: |
           STACK=conexao-scheduler
@@ -316,9 +331,10 @@ jobs:
                 
               deploy:
                 restart_policy:
-                  condition: on-failure
-                  delay: 10s
-                  max_attempts: 3
+                  condition: any
+                  delay: 30s
+                  max_attempts: 2
+                  window: 120s
                 replicas: 1
                 resources:
                   limits:
