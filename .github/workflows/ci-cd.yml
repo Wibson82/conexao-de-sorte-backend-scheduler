@@ -196,6 +196,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     steps:
       - name: Login GHCR (Self-hosted)
         uses: docker/login-action@v3
