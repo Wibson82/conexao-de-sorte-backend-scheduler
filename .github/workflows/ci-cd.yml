@@ -205,6 +205,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+
       - name: Pull imagem do GHCR
         run: docker pull "${{ needs.build-image.outputs.image }}"
 
