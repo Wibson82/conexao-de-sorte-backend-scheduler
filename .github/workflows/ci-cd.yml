@@ -297,7 +297,6 @@ jobs:
           IMAGE="${{ needs.build-image.outputs.image }}"
           
           # Criar rede se não existir
-          docker network create --driver overlay conexao-network 2>/dev/null || true
           
           cat <<EOF | docker stack deploy --with-registry-auth -c - $STACK
           version: "3.9"
