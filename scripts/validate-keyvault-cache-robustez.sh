@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Validates Key Vault via OIDC/configtree variables presence, Resilience4j toggles and cache TTLs
+# Validates Key Vault via Spring Cloud Azure, configtree variables presence, Resilience4j toggles and cache TTLs
 # Usage: BASE_URL=http://localhost:8081 ./scripts/validate-keyvault-cache-robustez.sh
 
 BASE_URL="${BASE_URL:-http://localhost:8081}"
 
-echo "[auth] Checking OIDC/KeyVault and configtree mounts"
+echo "[auth] Checking Spring Cloud Azure/KeyVault and configtree mounts"
 env | grep -E 'AZURE_(TENANT_ID|CLIENT_ID|KEYVAULT|SUBSCRIPTION_ID)' || echo "[auth] ⚠️ Azure OIDC envs not present"
 if [ -d /run/secrets ]; then
   echo "[auth] ✅ /run/secrets present"; ls -1 /run/secrets || true

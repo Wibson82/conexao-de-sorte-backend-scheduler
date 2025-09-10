@@ -157,12 +157,12 @@ docker-compose up -d mysql redis
 - **`test`**: Execução de testes
 - **`prod`**: Produção
 
-### 🔐 Azure Key Vault (Opcional)
+### 🔐 Azure Key Vault via Spring Cloud Azure
 
 Para usar rotação de chaves em produção:
 
 ```bash
-export AZURE_KEYVAULT_URI=https://seu-keyvault.vault.azure.net/
+export AZURE_KEYVAULT_ENDPOINT=https://seu-keyvault.vault.azure.net/
 export AZURE_CLIENT_ID=sua-app-registration-id
 # OIDC-only: não utilizar AZURE_CLIENT_SECRET; use OIDC + Key Vault
 export AZURE_TENANT_ID=seu-tenant-id

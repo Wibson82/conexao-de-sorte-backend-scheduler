@@ -30,15 +30,12 @@
 environment:
   - SPRING_PROFILES_ACTIVE=prod  # ← CRÍTICO: Mudar de "dev" para "prod"
   
-  # Azure Key Vault (obrigatório para produção)
-  - AZURE_KEYVAULT_ENABLED=true
+  # Azure Key Vault via Spring Cloud Azure (obrigatório para produção)
+  - spring.cloud.azure.keyvault.secret.enabled=true
   - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
   - AZURE_KEYVAULT_ENDPOINT=${AZURE_KEYVAULT_ENDPOINT}
   - AZURE_TENANT_ID=${AZURE_TENANT_ID}
   - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}
-  
-  # JWT Key Vault habilitado
-  - JWT_KEYVAULT_ENABLED=true
   
   # SSL habilitado
   - conexao-de-sorte-ssl-enabled=true
@@ -80,14 +77,11 @@ CMD ["java", "${JAVA_OPTS}", "-jar", "/app/autenticacao.jar"]
 export SPRING_PROFILES_ACTIVE=prod
 export JAVA_HOME=/opt/java/24
 
-# Variáveis do Azure Key Vault
-export AZURE_KEYVAULT_ENABLED=true
+# Variáveis do Azure Key Vault via Spring Cloud Azure
+export spring_cloud_azure_keyvault_secret_enabled=true
 export AZURE_CLIENT_ID="valor-do-secret"
 export AZURE_KEYVAULT_ENDPOINT="valor-do-secret"
 export AZURE_TENANT_ID="valor-do-secret"
-
-# JWT Key Vault
-export JWT_KEYVAULT_ENABLED=true
 
 # SSL
 export conexao-de-sorte-ssl-enabled=true

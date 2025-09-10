@@ -188,7 +188,7 @@ jobs:
 
   deploy-selfhosted:
     needs: build-image
-    runs-on: [ self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler ]
+    runs-on: [self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler]
     timeout-minutes: 30
     if: |
       github.ref == 'refs/heads/main' &&

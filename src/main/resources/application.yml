@@ -17,19 +17,20 @@ spring:
   codec:
     max-in-memory-size: 10MB
     
-  # Config import para Azure Key Vault secrets
+  # Config import para secrets via ConfigTree (Docker Secrets)
   config:
     import:
+      - optional:configtree:/run/secrets/
       - optional:configtree:/etc/secrets/azure/
       - optional:configtree:/mnt/secrets/
       - optional:file:./secrets.properties
       
-  # Azure Key Vault (padrão simplificado)
+  # Azure Key Vault via Spring Cloud Azure
   cloud:
     azure:
       keyvault:
         secret:
-          enabled: ${AZURE_KEYVAULT_ENABLED:false}
+          enabled: ${azure.keyvault.enabled:false}
           endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
       profile:
         tenant-id: ${AZURE_TENANT_ID:}

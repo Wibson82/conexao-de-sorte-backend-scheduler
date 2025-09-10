@@ -12,12 +12,12 @@ spring:
     import:
       - "optional:configtree:/run/secrets/"
 
-  # ===== SPRING CLOUD AZURE - DISABLED FOR MANUAL CONFIG =====
+  # ===== SPRING CLOUD AZURE =====
   cloud:
     azure:
       keyvault:
         secret:
-          enabled: false  # Usando configuração manual AzureKeyVaultConfig
+          enabled: true  # Habilitado para perfil Azure
       profile:
         tenant-id: ${AZURE_TENANT_ID:}
         subscription-id: ${AZURE_SUBSCRIPTION_ID:}
