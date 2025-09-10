@@ -1,7 +1,6 @@
 package br.tec.facilitaservicos.scheduler.infraestrutura.quartz;
 
-import br.tec.facilitaservicos.scheduler.aplicacao.servico.JobService;
-import br.tec.facilitaservicos.scheduler.aplicacao.servico.etl.LoteriasETLJob;
+import br.tec.facilitaservicos.scheduler.aplicacao.job.GerenciadorJobLoterias;
 import br.tec.facilitaservicos.scheduler.dominio.repositorio.JobRepository;
 import br.tec.facilitaservicos.scheduler.dominio.enums.StatusJob;
 import br.tec.facilitaservicos.scheduler.dominio.enums.TipoJob;
@@ -53,9 +52,9 @@ public class QuartzJobExecutor implements Job {
 
     private final ApplicationContext applicationContext;
     private final JobRepository jobRepository;
-    private final LoteriasETLJob loteriasETLJob;
+    private final GerenciadorJobLoterias loteriasETLJob;
 
-    public QuartzJobExecutor(ApplicationContext applicationContext, JobRepository jobRepository, LoteriasETLJob loteriasETLJob) {
+    public QuartzJobExecutor(ApplicationContext applicationContext, JobRepository jobRepository, GerenciadorJobLoterias loteriasETLJob) {
         this.applicationContext = applicationContext;
         this.jobRepository = jobRepository;
         this.loteriasETLJob = loteriasETLJob;
@@ -172,8 +171,9 @@ public class QuartzJobExecutor implements Job {
         return switch (tipo) {
             case ETL_RESULTADOS -> {
                 String loteria = extrairParametroString(job, "loteria");
+                String data = extrairParametroString(job, "data");
                 if (loteria != null && !loteria.trim().isEmpty()) {
-                    yield loteriasETLJob.executarETLLoteria(jobId, loteria);
+                    yield loteriasETLJob.executarETLLoteria(jobId, loteria, data);
                 } else {
                     yield loteriasETLJob.executarETLCompleto(jobId);
                 }

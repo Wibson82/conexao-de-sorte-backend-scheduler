@@ -1,6 +1,6 @@
 package br.tec.facilitaservicos.scheduler.apresentacao.controlador;
 
-import br.tec.facilitaservicos.scheduler.aplicacao.job.LoteriasETLJob;
+import br.tec.facilitaservicos.scheduler.aplicacao.job.GerenciadorJobLoterias;
 import br.tec.facilitaservicos.scheduler.aplicacao.servico.DiagnosticoService;
 import br.tec.facilitaservicos.scheduler.apresentacao.dto.EtlJobRequest;
 import br.tec.facilitaservicos.scheduler.apresentacao.dto.EtlJobResponse;
@@ -27,11 +27,11 @@ public class JobController {
 
     private static final Logger logger = LoggerFactory.getLogger(JobController.class);
     
-    private final LoteriasETLJob loteriasETLJob;
+    private final GerenciadorJobLoterias loteriasETLJob;
     private final DiagnosticoService diagnosticoService;
     private final Counter jobsCreatedCounter;
 
-    public JobController(LoteriasETLJob loteriasETLJob, 
+    public JobController(GerenciadorJobLoterias loteriasETLJob, 
                         DiagnosticoService diagnosticoService,
                         MeterRegistry meterRegistry) {
         this.loteriasETLJob = loteriasETLJob;
@@ -54,7 +54,7 @@ public class JobController {
         logger.info("Iniciando job ETL: jobId={}, modalidade={}, data={}", 
                    jobId, request.modalidade(), request.data());
         
-        return loteriasETLJob.executar(jobId, request.modalidade(), request.data())
+        return loteriasETLJob.executarETLLoteria(jobId, request.modalidade(), request.data())
                 .doOnNext(result -> {
                     jobsCreatedCounter.increment();
                     logger.info("Job ETL iniciado com sucesso: jobId={}", jobId);

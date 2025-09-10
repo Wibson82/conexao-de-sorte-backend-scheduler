@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -23,16 +22,20 @@ import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+
+import br.tec.facilitaservicos.scheduler.dominio.entidade.JobExecution;
+import br.tec.facilitaservicos.scheduler.dominio.entidade.JobStatus;
 import java.util.stream.IntStream;
 
 /**
  * ============================================================================
- * 🎲 JOB ETL PARA EXTRAÇÃO DE RESULTADOS DE LOTERIAS
+ * 🎲 SERVIÇO ETL PARA EXTRAÇÃO DE RESULTADOS DE LOTERIAS
  * ============================================================================
  * 
- * Job especializado para extrair resultados de loterias dos sites oficiais:
+ * Serviço especializado para extrair resultados de loterias dos sites oficiais:
  * 
  * 🎯 LOTERIAS SUPORTADAS:
  * - Mega-Sena
@@ -67,15 +70,15 @@ import java.util.stream.IntStream;
  * @since 2024
  */
 @Service
-public class LoteriasETLJob {
+public class ServicoETLLoterias {
 
-    private static final Logger log = LoggerFactory.getLogger(LoteriasETLJob.class);
+    private static final Logger log = LoggerFactory.getLogger(ServicoETLLoterias.class);
 
     private final WebClient webClient;
     private final JobRepository jobRepository;
     private final MeterRegistry meterRegistry;
 
-    public LoteriasETLJob(WebClient webClient, JobRepository jobRepository, MeterRegistry meterRegistry) {
+    public ServicoETLLoterias(WebClient webClient, JobRepository jobRepository, MeterRegistry meterRegistry) {
         this.webClient = webClient;
         this.jobRepository = jobRepository;
         this.meterRegistry = meterRegistry;
@@ -98,7 +101,7 @@ public class LoteriasETLJob {
     private Timer etlTimer;
 
     // URLs das loterias
-    private static final Map<String, String> URLS_LOTERIAS = Map.of(
+    private Map<String, String> URLS_LOTERIAS = Map.of(
         "megasena", "https://servicebus2.caixa.gov.br/portaldeloterias/api/megasena",
         "quina", "https://servicebus2.caixa.gov.br/portaldeloterias/api/quina",
         "lotofacil", "https://servicebus2.caixa.gov.br/portaldeloterias/api/lotofacil",
@@ -109,6 +112,28 @@ public class LoteriasETLJob {
         "supersete", "https://servicebus2.caixa.gov.br/portaldeloterias/api/supersete",
         "milionaria", "https://servicebus2.caixa.gov.br/portaldeloterias/api/milionaria"
     );
+    
+    /**
+     * Configura URLs personalizadas para testes
+     * @param urls Mapa de URLs para substituir as padrões
+     */
+    public void configurarUrlsParaTeste(Map<String, String> urls) {
+        this.URLS_LOTERIAS = urls;
+        log.info("URLs configuradas para teste: {}", urls.size());
+    }
+    
+    /**
+     * Configura URLs personalizadas para testes usando uma URL base
+     * @param baseUrl URL base para todas as loterias
+     */
+    public void configurarUrlsParaTeste(String baseUrl) {
+        Map<String, String> novasUrls = new HashMap<>();
+        for (String loteria : URLS_LOTERIAS.keySet()) {
+            novasUrls.put(loteria, baseUrl + "/" + loteria);
+        }
+        this.URLS_LOTERIAS = novasUrls;
+        log.info("URLs configuradas para teste com base URL: {}", baseUrl);
+    }
 
     // Padrões de validação
     private static final Pattern PATTERN_NUMERO = Pattern.compile("^\\d{1,2}$");
@@ -116,11 +141,14 @@ public class LoteriasETLJob {
 
     /**
      * Executa ETL completo para todas as loterias
+     * @param jobId ID do job
+     * @return Mono<JobExecution> com o resultado da execução
      */
-    public Mono<Void> executarETLCompleto(String jobId) {
+    public Mono<JobExecution> executarETLCompleto(String jobId) {
         log.info("🎲 Iniciando ETL completo de loterias para job: {}", jobId);
         
         Timer.Sample sample = Timer.start(meterRegistry);
+        String chaveIdempotencia = gerarChaveIdempotencia("completo", LocalDateTime.now().toString());
         
         return jobRepository.findById(jobId)
             .flatMap(this::marcarJobComoExecutando)
@@ -134,8 +162,15 @@ public class LoteriasETLJob {
                     .then()
             )
             .then(jobRepository.findById(jobId))
-            .flatMap(this::marcarJobComoCompletado)
-            .doOnSuccess(job -> {
+            .flatMap(job -> marcarJobComoCompletado(job)
+                .map(jobAtualizado -> converterParaJobExecution(
+                    jobAtualizado, 
+                    "completo", 
+                    LocalDateTime.now().toString(), 
+                    chaveIdempotencia
+                ))
+            )
+            .doOnSuccess(execution -> {
                 sample.stop(etlTimer);
                 log.info("✅ ETL completo finalizado para job: {}", jobId);
             })
@@ -146,33 +181,73 @@ public class LoteriasETLJob {
                     .flatMap(job -> marcarJobComoFalhado(job, error.getMessage()))
                     .subscribe();
             })
-            .then();
+            .onErrorResume(error -> 
+                jobRepository.findById(jobId)
+                    .flatMap(job -> marcarJobComoFalhado(job, error.getMessage())
+                        .map(jobAtualizado -> converterParaJobExecution(
+                            jobAtualizado, 
+                            "completo", 
+                            LocalDateTime.now().toString(), 
+                            chaveIdempotencia
+                        ))
+                    )
+            );
     }
 
     /**
      * Executa ETL para uma loteria específica
+     * @param jobId ID do job
+     * @param loteria Nome da loteria
+     * @param data Data opcional no formato yyyy-MM-dd
+     * @return Mono<JobExecution> com o resultado da execução
      */
-    public Mono<Void> executarETLLoteria(String jobId, String loteria) {
-        log.info("🎯 Iniciando ETL para {} - job: {}", loteria, jobId);
+    public Mono<JobExecution> executarETLLoteria(String jobId, String loteria, String data) {
+        log.info("🎯 Iniciando ETL para {} - job: {} - data: {}", loteria, jobId, data);
         
         String url = URLS_LOTERIAS.get(loteria.toLowerCase());
         if (url == null) {
             return Mono.error(new IllegalArgumentException("Loteria não suportada: " + loteria));
         }
         
+        // Adicionar parâmetro de data à URL se fornecido
+        if (data != null && !data.isEmpty()) {
+            url = url + "?data=" + data;
+            log.debug("URL com data específica: {}", url);
+        }
+        
+        // Gerar chave de idempotência
+        String chaveIdempotencia = gerarChaveIdempotencia(loteria, data);
+        
         return jobRepository.findById(jobId)
             .flatMap(this::marcarJobComoExecutando)
             .then(extrairResultadosLoteria(loteria, url))
             .then(jobRepository.findById(jobId))
-            .flatMap(this::marcarJobComoCompletado)
-            .doOnSuccess(job -> log.info("✅ ETL finalizado para {} - job: {}", loteria, jobId))
+            .flatMap(job -> marcarJobComoCompletado(job)
+                .map(jobAtualizado -> converterParaJobExecution(
+                    jobAtualizado, 
+                    loteria, 
+                    data, 
+                    chaveIdempotencia
+                ))
+            )
+            .doOnSuccess(execution -> log.info("✅ ETL finalizado para {} - job: {}", loteria, jobId))
             .doOnError(error -> {
                 log.error("❌ Erro no ETL para {} - job: {}: {}", loteria, jobId, error.getMessage());
                 jobRepository.findById(jobId)
                     .flatMap(job -> marcarJobComoFalhado(job, error.getMessage()))
                     .subscribe();
             })
-            .then();
+            .onErrorResume(error -> 
+                jobRepository.findById(jobId)
+                    .flatMap(job -> marcarJobComoFalhado(job, error.getMessage())
+                        .map(jobAtualizado -> converterParaJobExecution(
+                            jobAtualizado, 
+                            loteria, 
+                            data, 
+                            gerarChaveIdempotencia(loteria, data)
+                        ))
+                    )
+            );
     }
 
     /**
@@ -367,6 +442,17 @@ public class LoteriasETLJob {
         return throwable instanceof java.net.ConnectException ||
                throwable instanceof java.util.concurrent.TimeoutException;
     }
+    
+    /**
+     * Gera uma chave de idempotência para o job
+     * @param loteria Nome da loteria
+     * @param data Data opcional no formato yyyy-MM-dd
+     * @return Chave de idempotência
+     */
+    private String gerarChaveIdempotencia(String loteria, String data) {
+        String dataFormatada = (data != null && !data.isEmpty()) ? data : "latest";
+        return String.format("%s:%s", loteria.toLowerCase(), dataFormatada);
+    }
 
     // === MÉTODOS DE CONTROLE DE JOB ===
 
@@ -380,18 +466,67 @@ public class LoteriasETLJob {
     }
 
     private Mono<JobR2dbc> marcarJobComoCompletado(JobR2dbc job) {
-        job.setStatus(StatusJob.COMPLETADO);
         job.setCompletadoEm(LocalDateTime.now());
+        // Registrar sucesso vai definir o status como EXECUTADO, então precisamos chamar primeiro
         job.registrarSucesso(System.currentTimeMillis() - job.getIniciadoEm().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli());
+        // Sobrescrever o status para COMPLETADO após registrarSucesso
+        job.setStatus(StatusJob.COMPLETADO);
         job.setAtualizadoEm(LocalDateTime.now());
         return jobRepository.save(job);
     }
 
     private Mono<JobR2dbc> marcarJobComoFalhado(JobR2dbc job, String erro) {
         job.setStatus(StatusJob.FALHADO);
-        job.registrarFalha(erro);
+        job.setCompletadoEm(LocalDateTime.now());
+        job.setUltimoErro(erro);
+        job.setTotalExecucoes(job.getTotalExecucoes() + 1);
+        job.setTotalFalhas(job.getTotalFalhas() + 1);
         job.setAtualizadoEm(LocalDateTime.now());
         return jobRepository.save(job);
+    }
+    
+    /**
+     * Converte StatusJob para JobStatus
+     * @param statusJob StatusJob a ser convertido
+     * @return JobStatus equivalente
+     */
+    private JobStatus converterStatus(StatusJob statusJob) {
+        if (statusJob == null) {
+            return JobStatus.FAILED;
+        }
+        
+        return switch (statusJob) {
+            case EXECUTANDO -> JobStatus.RUNNING;
+            case COMPLETADO -> JobStatus.COMPLETED;
+            case FALHADO, TIMEOUT -> JobStatus.FAILED;
+            default -> JobStatus.FAILED;
+        };
+    }
+    
+    /**
+     * Converte JobR2dbc para JobExecution
+     * @param job JobR2dbc a ser convertido
+     * @param modalidade Modalidade da loteria
+     * @param data Data da extração
+     * @param chaveIdempotencia Chave de idempotência
+     * @return JobExecution equivalente
+     */
+    private JobExecution converterParaJobExecution(JobR2dbc job, String modalidade, String data, String chaveIdempotencia) {
+        if (job == null) {
+            return null;
+        }
+        
+        JobExecution execution = new JobExecution(
+            job.getId(),
+            modalidade,
+            data != null ? data : "",
+            chaveIdempotencia,
+            job.getIniciadoEm(),
+            converterStatus(job.getStatus())
+        );
+        
+        execution.setEndTime(job.getCompletadoEm());
+        return execution;
     }
 
     // === CLASSE INTERNA PARA RESULTADO ===

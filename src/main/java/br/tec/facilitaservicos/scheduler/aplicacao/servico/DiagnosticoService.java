@@ -1,6 +1,6 @@
 package br.tec.facilitaservicos.scheduler.aplicacao.servico;
 
-import br.tec.facilitaservicos.scheduler.aplicacao.job.LoteriasETLJob;
+import br.tec.facilitaservicos.scheduler.aplicacao.job.GerenciadorJobLoterias;
 import br.tec.facilitaservicos.scheduler.apresentacao.dto.SchedulerStatusResponse;
 import br.tec.facilitaservicos.scheduler.dominio.entidade.JobExecution;
 import org.springframework.stereotype.Service;
@@ -16,9 +16,9 @@ import java.util.Map;
 @Service
 public class DiagnosticoService {
 
-    private final LoteriasETLJob loteriasETLJob;
+    private final GerenciadorJobLoterias loteriasETLJob;
 
-    public DiagnosticoService(LoteriasETLJob loteriasETLJob) {
+    public DiagnosticoService(GerenciadorJobLoterias loteriasETLJob) {
         this.loteriasETLJob = loteriasETLJob;
     }
 

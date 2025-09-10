@@ -35,6 +35,7 @@ spring:
         tenant-id: ${AZURE_TENANT_ID:}
         subscription-id: ${AZURE_SUBSCRIPTION_ID:}
         client-id: ${AZURE_CLIENT_ID:}
+
   security:
     oauth2:
       resourceserver:
@@ -50,6 +51,9 @@ spring:
     serialization:
       WRITE_DATES_AS_TIMESTAMPS: false
 
+# Habilitar/desabilitar integração manual com Azure Key Vault
+azure.keyvault.enabled: false
+
 management:
   endpoints:
     web:
@@ -60,7 +64,7 @@ management:
       application: conexao-scheduler
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: when-authorized
 
 cors:
   allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
@@ -72,6 +76,17 @@ scheduler:
       enabled: true
       backoff-ms: 2000
       max-retries: 5
+      modalidades:
+        - megasena
+        - quina
+        - lotofacil
+        - lotomania
+        - duplasena
+        - timemania
+        - diadesorte
+        - supersete
+        - loteca
+        - milionaria
 
 # Resilience4j Configuration
 resilience4j:

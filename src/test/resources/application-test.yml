@@ -46,6 +46,23 @@ app:
   azure:
     key-vault:
       enabled: false # Usar fallback keys nos testes
+
+# Configurações do scheduler para testes
+scheduler:
+  etl:
+    loterias:
+      enabled: true
+      backoff-ms: 100
+      max-retries: 3
+      modalidades:
+        - megasena
+        - quina
+        - lotofacil
+        - lotomania
+        - duplasena
+        - timemania
+        - diadesorte
+        - supersete
       
 # Configurações do servidor para testes
 server:

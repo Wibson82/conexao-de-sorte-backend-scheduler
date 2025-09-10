@@ -43,7 +43,7 @@ import java.util.Map;
  * @since 2024
  */
 @Configuration
-@ConditionalOnProperty(name = "AZURE_KEYVAULT_ENABLED", havingValue = "true")
+@ConditionalOnProperty(name = "azure.keyvault.enabled", havingValue = "true")
 public class AzureKeyVaultConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(AzureKeyVaultConfig.class);

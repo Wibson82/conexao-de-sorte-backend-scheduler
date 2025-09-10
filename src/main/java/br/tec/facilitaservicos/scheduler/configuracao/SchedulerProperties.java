@@ -16,6 +16,7 @@ public record SchedulerProperties(
     public record Loterias(
         boolean enabled,
         long backoffMs,
-        int maxRetries
+        int maxRetries,
+        java.util.List<String> modalidades
     ) {}
 }

@@ -14,8 +14,6 @@ import net.logstash.logback.marker.Markers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
@@ -26,13 +24,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Job de ETL para loterias.
+ * Gerenciador de jobs ETL para loterias.
  * Extrai → processa → persiste com idempotência e retries.
  */
 @Component
-public class LoteriasETLJob {
+public class GerenciadorJobLoterias {
 
-    private static final Logger logger = LoggerFactory.getLogger(LoteriasETLJob.class);
+    private static final Logger logger = LoggerFactory.getLogger(GerenciadorJobLoterias.class);
     
     private final SchedulerProperties properties;
     private final ServicoExtracaoLoteria servicoExtracao;
@@ -44,7 +42,7 @@ public class LoteriasETLJob {
     private final CircuitBreaker circuitBreaker;
     private final MeterRegistry meterRegistry;
 
-    public LoteriasETLJob(SchedulerProperties properties, 
+    public GerenciadorJobLoterias(SchedulerProperties properties, 
                          ServicoExtracaoLoteria servicoExtracao,
                          MeterRegistry meterRegistry,
                          CircuitBreakerRegistry circuitBreakerRegistry) {
@@ -194,5 +192,37 @@ public class LoteriasETLJob {
 
     public Map<String, JobExecution> getJobExecutions() {
         return Map.copyOf(jobExecutions);
+    }
+    
+    /**
+     * Executa ETL para uma loteria específica
+     * @param jobId ID do job
+     * @param loteria Nome da loteria
+     * @param data Data opcional no formato yyyy-MM-dd
+     * @return Mono<Void> indicando conclusão
+     */
+    public Mono<Void> executarETLLoteria(String jobId, String loteria, String data) {
+        logger.info("Executando ETL para loteria específica: {} (jobId={}, data={})", loteria, jobId, data);
+        return executar(jobId, loteria, data)
+            .then();
+    }
+    
+    /**
+     * Executa ETL completo para todas as loterias
+     * @param jobId ID do job
+     * @return Mono<Void> indicando conclusão
+     */
+    public Mono<Void> executarETLCompleto(String jobId) {
+        logger.info("Executando ETL completo para todas as loterias (jobId={})", jobId);
+        return Mono.fromRunnable(() -> {
+            // Implementação do ETL completo para todas as loterias
+            properties.etl().loterias().modalidades().forEach(modalidade -> {
+                executar(jobId + "-" + modalidade, modalidade, null)
+                    .subscribe(
+                        result -> logger.debug("ETL para {} iniciado", modalidade),
+                        error -> logger.error("Erro ao iniciar ETL para {}: {}", modalidade, error.getMessage())
+                    );
+            });
+        }).then();
     }
 }
