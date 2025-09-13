@@ -37,6 +37,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: "Guard: validar configurações obrigatórias do Microserviço"
+        shell: bash
+        run: |
+          chmod +x .github/workflows/scripts/validate-required-files.sh
+          ./.github/workflows/scripts/validate-required-files.sh microservice
+
       - name: "Guard: proibir r2dbc:h2 fora de testes"
         shell: bash
         run: |
@@ -90,7 +96,7 @@ jobs:
 # ----------------------------------------------------------------------
 
   build-image:
-    needs: build-test-scan
+    needs: [ build-test-scan, security-analysis ]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -182,6 +188,22 @@ jobs:
           rm -f redis_pass.txt jwt_secret.txt
           
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+# ----------------------------------------------------------------------
+# JOB 3.5 ▸ ANÁLISE DE SEGURANÇA (similar aos demais serviços)
+# ----------------------------------------------------------------------
+
+  security-analysis:
+    needs: build-test-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar score de segurança do Microserviço
+        run: |
+          chmod +x .github/workflows/scripts/security-analysis.sh
+          ./.github/workflows/scripts/security-analysis.sh microservice 4
 
 # ----------------------------------------------------------------------
 # JOB 4 ▸ DEPLOY SELF‑HOSTED (Docker Swarm + secrets)
