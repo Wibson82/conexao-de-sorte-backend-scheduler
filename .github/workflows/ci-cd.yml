@@ -288,8 +288,8 @@ jobs:
           CORS_ALLOW_CREDENTIALS=$(get_secret "conexao-de-sorte-cors-allow-credentials" "false")
           
           # Criar/atualizar Docker secrets
-          printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password - 2>/dev/null || docker secret update scheduler_redis_password -
-          printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret - 2>/dev/null || docker secret update scheduler_jwt_secret -
+          printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password - 2>/dev/null || { docker secret rm scheduler_redis_password; printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password -; }
+          printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret - 2>/dev/null || { docker secret rm scheduler_jwt_secret; printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret -; }
           
           # Salvar variáveis de ambiente para o próximo step
           echo "REDIS_HOST=$REDIS_HOST" >> $GITHUB_ENV
