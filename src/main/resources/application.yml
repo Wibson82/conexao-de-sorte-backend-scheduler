@@ -1,5 +1,5 @@
 server:
-  port: ${conexao-de-sorte-server-port:8084}
+  port: ${conexao-de-sorte-server-port:8095}}
   ssl:
     enabled: ${conexao-de-sorte-ssl-enabled:false}
     key-store: ${conexao-de-sorte-ssl-keystore-path:}
