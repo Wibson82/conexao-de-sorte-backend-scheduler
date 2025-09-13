@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: scheduler-jar
-          path: target/scheduler-*.jar
+          path: target/*.jar
           retention-days: 1
 
 # ----------------------------------------------------------------------
@@ -165,7 +165,8 @@ jobs:
         id: build
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE=ghcr.io/$REPO_LOWER/scheduler:$(date +'%d-%m-%Y-%H-%M')
+          TIMESTAMP=$(date +'%d-%m-%Y-%H-%M')
+          IMAGE=ghcr.io/$REPO_LOWER/conexao-de-sorte-backend-scheduler:${TIMESTAMP}
           
           # Build com secrets
           docker buildx build \
