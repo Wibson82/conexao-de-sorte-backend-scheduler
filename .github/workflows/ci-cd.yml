@@ -338,7 +338,6 @@ jobs:
             echo "🆕 Serviço não existe - executando CREATE"
             timeout 120s docker service create \
               --name "$SERVICE_NAME" \
-              --image "$IMAGE" \
               --network "$NETWORK_NAME" \
               --detach=false \
               --publish ${PORT}:8080 \
@@ -357,7 +356,7 @@ jobs:
               --env AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
               --env AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
               --env AZURE_KEYVAULT_ENABLED=true \
-              "$SERVICE_NAME"
+              "$IMAGE"
           fi
 
           # Verificar se deploy foi bem-sucedido
