@@ -165,7 +165,7 @@ jobs:
         id: build
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE=ghcr.io/$REPO_LOWER/scheduler:${{ github.sha }}
+          IMAGE=ghcr.io/$REPO_LOWER/scheduler:$(date +'%d-%m-%Y-%H-%M')
           
           # Build com secrets
           docker buildx build \
