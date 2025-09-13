@@ -189,7 +189,7 @@ jobs:
   deploy-selfhosted:
     needs: build-image
     runs-on: [self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler]
-    timeout-minutes: 30
+    timeout-minutes: 8
     if: |
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
@@ -291,81 +291,63 @@ jobs:
           
           echo "✅ Limpeza concluída"
 
-      - name: Deploy via docker stack
+      - name: Deploy via docker service (update/create)
         run: |
-          STACK=conexao-scheduler
+          set -euo pipefail
           IMAGE="${{ needs.build-image.outputs.image }}"
-          
+          SERVICE_NAME="${{ env.SERVICE_NAME }}"
+          PORT=8095
+          NETWORK_NAME="conexao-network-swarm"
+
           # Criar rede se não existir
-          
-          cat <<EOF | docker stack deploy --with-registry-auth -c - $STACK
-          version: "3.9"
-          services:
-            scheduler:
-              image: $IMAGE
-              secrets:
-                - scheduler_redis_password
-                - scheduler_jwt_secret
-              environment:
-                # Spring Configuration
-                SPRING_PROFILES_ACTIVE: prod,azure
-                TZ: America/Sao_Paulo
-                SERVER_PORT: 8080
-                
-                # Redis Configuration
-                SPRING_DATA_REDIS_HOST: "$REDIS_HOST"
-                SPRING_DATA_REDIS_PORT: "$REDIS_PORT"
-                SPRING_DATA_REDIS_DATABASE: "$REDIS_DATABASE"
-                
-                # JWT Configuration
-                JWT_ISSUER: "$JWT_ISSUER"
-                
-                # CORS Configuration
-                CORS_ALLOWED_ORIGINS: "$CORS_ALLOWED_ORIGINS"
-                CORS_ALLOW_CREDENTIALS: "$CORS_ALLOW_CREDENTIALS"
-                
-                # Azure Configuration
-                AZURE_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
-                AZURE_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
-                AZURE_KEYVAULT_ENDPOINT: "${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
-                AZURE_KEYVAULT_ENABLED: "true"
-                
-              deploy:
-                restart_policy:
-                  condition: any
-                  delay: 30s
-                  max_attempts: 2
-                  window: 120s
-                replicas: 1
-                resources:
-                  limits:
-                    memory: 512M
-                  reservations:
-                    memory: 256M
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-                start_period: 60s
-              networks:
-                - conexao-network
-              labels:
-                - "traefik.enable=true"
-                - "traefik.http.routers.scheduler.rule=Host(\`scheduler.conexaodesorte.com.br\`)"
-                - "traefik.http.routers.scheduler.tls.certresolver=letsencrypt"
-                - "traefik.http.services.scheduler.loadbalancer.server.port=8080"
-          
-          secrets:
-            scheduler_redis_password:
-              external: true
-            scheduler_jwt_secret:
-              external: true
-          
-          networks:
-            conexao-network:
-              external: true
-          EOF
+          docker network create --driver overlay "$NETWORK_NAME" 2>/dev/null || true
+
+          echo "🔍 Verificando se serviço $SERVICE_NAME já existe..."
+          if docker service ls --format '{{.Name}}' | grep -qx "$SERVICE_NAME"; then
+            echo "🔄 Serviço já existe - executando UPDATE para nova imagem"
+            timeout 60s docker service update \
+              --image "$IMAGE" \
+              --detach=false \
+              --update-parallelism 1 \
+              --update-delay 10s \
+              "$SERVICE_NAME"
+          else
+            echo "🆕 Serviço não existe - executando CREATE"
+            timeout 120s docker service create \
+              --name "$SERVICE_NAME" \
+              --image "$IMAGE" \
+              --network "$NETWORK_NAME" \
+              --detach=false \
+              --publish ${PORT}:8080 \
+              --secret ${SERVICE_NAME}_redis_password \
+              --secret ${SERVICE_NAME}_jwt_secret \
+              --env SPRING_PROFILES_ACTIVE=prod,azure \
+              --env TZ=America/Sao_Paulo \
+              --env SERVER_PORT=8080 \
+              --env SPRING_DATA_REDIS_HOST="${REDIS_HOST:-}" \
+              --env SPRING_DATA_REDIS_PORT="${REDIS_PORT:-}" \
+              --env SPRING_DATA_REDIS_DATABASE="${REDIS_DATABASE:-}" \
+              --env JWT_ISSUER="${JWT_ISSUER:-}" \
+              --env CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-}" \
+              --env CORS_ALLOW_CREDENTIALS="${CORS_ALLOW_CREDENTIALS:-}" \
+              --env AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+              --env AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+              --env AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
+              --env AZURE_KEYVAULT_ENABLED=true \
+              "$SERVICE_NAME"
+          fi
+
+          # Verificar se deploy foi bem-sucedido
+          echo "✅ Verificando saúde do serviço..."
+          sleep 10
+          REPLICAS=$(docker service ls --filter name="$SERVICE_NAME" --format '{{.Replicas}}' | head -1 || echo "")
+          if echo "$REPLICAS" | grep -q "1/1"; then
+            echo "✅ Deploy bem-sucedido!"
+          else
+            echo "❌ Falha no deploy - verificar logs"
+            docker service logs "$SERVICE_NAME" --tail 50 || true
+            exit 1
+          fi
 
       - name: Aguardar Scheduler estar pronto
         run: |
