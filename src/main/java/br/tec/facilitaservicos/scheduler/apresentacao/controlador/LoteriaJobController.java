@@ -1,5 +1,17 @@
 package br.tec.facilitaservicos.scheduler.apresentacao.controlador;
 
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import br.tec.facilitaservicos.scheduler.aplicacao.job.GerenciadorJobLoterias;
 import br.tec.facilitaservicos.scheduler.aplicacao.servico.DiagnosticoService;
 import br.tec.facilitaservicos.scheduler.apresentacao.dto.EtlJobRequest;
@@ -9,32 +21,23 @@ import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
-import java.util.UUID;
-
 /**
- * Controlador para gerenciamento de jobs ETL.
- * DEPRECATED - Esse controlador será removido pois está gerando conflito de beans.
- * Use LoteriaJobController em seu lugar.
- * @deprecated Substituído por LoteriaJobController
+ * Controlador para gerenciamento de jobs ETL de Loterias.
+ * Renomeado para evitar conflito de beans com JobController na camada de infraestrutura.
  */
-// Removido @RestController para evitar conflito de beans
+@RestController
 @RequestMapping("/jobs")
-public class JobController_DEPRECATED {
+public class LoteriaJobController {
 
-    private static final Logger logger = LoggerFactory.getLogger(JobController.class);
+    private static final Logger logger = LoggerFactory.getLogger(LoteriaJobController.class);
 
     private final GerenciadorJobLoterias loteriasETLJob;
     private final DiagnosticoService diagnosticoService;
     private final Counter jobsCreatedCounter;
 
-    public JobController(GerenciadorJobLoterias loteriasETLJob,
+    public LoteriaJobController(GerenciadorJobLoterias loteriasETLJob,
                         DiagnosticoService diagnosticoService,
                         MeterRegistry meterRegistry) {
         this.loteriasETLJob = loteriasETLJob;

@@ -29,12 +29,12 @@ import java.util.UUID;
 public class JobController_DEPRECATED {
 
     private static final Logger logger = LoggerFactory.getLogger(JobController.class);
-
+    
     private final GerenciadorJobLoterias loteriasETLJob;
     private final DiagnosticoService diagnosticoService;
     private final Counter jobsCreatedCounter;
 
-    public JobController(GerenciadorJobLoterias loteriasETLJob,
+    public JobController(GerenciadorJobLoterias loteriasETLJob, 
                         DiagnosticoService diagnosticoService,
                         MeterRegistry meterRegistry) {
         this.loteriasETLJob = loteriasETLJob;
@@ -53,10 +53,10 @@ public class JobController_DEPRECATED {
     @Timed(value = "scheduler.jobs.creation.time", description = "Time taken to create ETL job")
     public Mono<ResponseEntity<EtlJobResponse>> iniciarETLLoterias(@Valid @RequestBody EtlJobRequest request) {
         String jobId = UUID.randomUUID().toString();
-
-        logger.info("Iniciando job ETL: jobId={}, modalidade={}, data={}",
+        
+        logger.info("Iniciando job ETL: jobId={}, modalidade={}, data={}", 
                    jobId, request.modalidade(), request.data());
-
+        
         return loteriasETLJob.executarETLLoteria(jobId, request.modalidade(), request.data())
                 .doOnNext(result -> {
                     jobsCreatedCounter.increment();
@@ -76,7 +76,7 @@ public class JobController_DEPRECATED {
     @PreAuthorize("hasAuthority('SCOPE_scheduler.read')")
     public Mono<ResponseEntity<SchedulerStatusResponse>> obterStatusSchedulers() {
         logger.debug("Consultando status dos schedulers");
-
+        
         return diagnosticoService.obterStatusSchedulers()
                 .map(ResponseEntity::ok)
                 .doOnNext(response -> logger.debug("Status dos schedulers obtido com sucesso"))
@@ -92,7 +92,7 @@ public class JobController_DEPRECATED {
     @PreAuthorize("hasAuthority('SCOPE_scheduler.read')")
     public Mono<ResponseEntity<String>> testarScheduler() {
         logger.debug("Executando teste do scheduler");
-
+        
         return diagnosticoService.testarScheduler()
                 .map(resultado -> ResponseEntity.ok(resultado))
                 .doOnNext(response -> logger.debug("Teste do scheduler executado com sucesso"))

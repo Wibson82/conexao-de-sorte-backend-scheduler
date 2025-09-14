@@ -109,27 +109,9 @@ EXPOSE 8084
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8084/actuator/health || exit 1
 
-# Script de entrada com pré-checagem de conexão ao banco (similar ao serviço de Resultados)
-RUN printf '%s\n' '#!/bin/sh' \
-    'set -eu' \
-    'log() { printf "%s %s\\n" "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"; }' \
-    'SECRETS_DIR=${SECRETS_DIR:-/run/secrets}' \
-    'R2DBC_FILE="$SECRETS_DIR/spring.r2dbc.url"' \
-    'JDBC_FILE="$SECRETS_DIR/spring.flyway.url"' \
-    'has_nc() { command -v nc >/dev/null 2>&1; }' \
-    'can_connect() { host="$1"; port="$2"; if has_nc; then nc -z -w 2 "$host" "$port" >/dev/null 2>&1; else (echo > /dev/tcp/"$host"/"$port") >/dev/null 2>&1 || return 1; fi; }' \
-    'rewrite_urls() { new_hostport="$1"; if [ -f "$R2DBC_FILE" ]; then r2dbc=$(cat "$R2DBC_FILE"); proto="r2dbc:mysql://"; rest="${r2dbc#${proto}}"; rest_no_host="${rest#*/}"; echo "${proto}${new_hostport}/${rest_no_host}" > "$R2DBC_FILE"; fi; if [ -f "$JDBC_FILE" ]; then jdbc=$(cat "$JDBC_FILE"); proto="jdbc:mysql://"; rest="${jdbc#${proto}}"; rest_no_host="${rest#*/}"; echo "${proto}${new_hostport}/${rest_no_host}" > "$JDBC_FILE"; fi; }' \
-    'preflight_db() {' \
-    '  [ -f "$R2DBC_FILE" ] || return 0' \
-    '  url=$(cat "$R2DBC_FILE"); base="${url#r2dbc:mysql://}"; hostport="${base%%/*}"; host="${hostport%%:*}"; port="${hostport#*:}"; [ "$port" = "$host" ] && port=3306' \
-    '  if can_connect "$host" "$port"; then return 0; fi' \
-    '  for alt in "conexao-mysql" "host.docker.internal"; do if can_connect "$alt" "$port"; then rewrite_urls "$alt:$port"; return 0; fi; done' \
-    '  gw=$(ip route 2>/dev/null | awk "/default/ {print $3; exit}"); if [ -n "${gw:-}" ] && can_connect "$gw" "$port"; then rewrite_urls "$gw:$port"; return 0; fi' \
-    '  if can_connect 127.0.0.1 "$port" || can_connect localhost "$port"; then rewrite_urls "127.0.0.1:$port"; fi' \
-    '}' \
-    'preflight_db || true' \
-    'exec dumb-init -- java -jar /app/app.jar' \
-    > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh && chown appuser:appgroup /app/docker-entrypoint.sh
+# Copiar script de entrada robusto com retry e healthcheck
+COPY --chown=appuser:appgroup docker/healthcheck-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Mudar para usuário não-root
 USER appuser:appgroup
@@ -145,7 +127,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.url="https://conexaodesorte.com"
 LABEL org.opencontainers.image.source="https://github.com/conexaodesorte/autenticacao"
 
-# Comando de inicialização com pré-checagem de DB
+# Comando de inicialização com pré-checagem de DB e retry
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # === ESTÁGIO 3: DEBUG (Opcional) ===
@@ -160,5 +142,5 @@ ENV JAVA_OPTS="$JAVA_OPTS \
 # Expor porta de debug
 EXPOSE 5005
 
-# Comando para debug
-ENTRYPOINT ["dumb-init", "--", "sh", "-c", "echo 'Starting AUTH service in DEBUG mode on port 5005' && java $JAVA_OPTS -jar app.jar"]
+# Comando para debug com retry
+ENTRYPOINT ["/app/docker-entrypoint.sh", "debug"]
