@@ -1,22 +1,22 @@
 server:
-  port: ${conexao-de-sorte-server-port:8095}}
+  port: ${SERVER_PORT:${conexao-de-sorte-server-port:8084}}
   ssl:
-    enabled: ${conexao-de-sorte-ssl-enabled:false}
-    key-store: ${conexao-de-sorte-ssl-keystore-path:}
-    key-store-password: ${conexao-de-sorte-ssl-keystore-password:}
+    enabled: ${SSL_ENABLED:${conexao-de-sorte-ssl-enabled:false}}
+    key-store: ${SSL_KEYSTORE_PATH:${conexao-de-sorte-ssl-keystore-path:}}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:${conexao-de-sorte-ssl-keystore-password:}}
 
 spring:
   application:
     name: conexao-scheduler
-  
+
   profiles:
-    default: prod
-    active: prod
+    default: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   main:
     web-application-type: reactive
   codec:
     max-in-memory-size: 10MB
-    
+
   # Config import para secrets via ConfigTree (Docker Secrets)
   config:
     import:
@@ -24,7 +24,7 @@ spring:
       - optional:configtree:/etc/secrets/azure/
       - optional:configtree:/mnt/secrets/
       - optional:file:./secrets.properties
-      
+
   # Azure Key Vault via Spring Cloud Azure
   cloud:
     azure:
@@ -41,19 +41,31 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${conexao-de-sorte-jwt-issuer}
-          jwk-set-uri: ${conexao-de-sorte-jwt-jwks-uri}
+          issuer-uri: ${JWT_ISSUER:${conexao-de-sorte-jwt-issuer:https://auth.conexaodesorte.com}}
+          jwk-set-uri: ${JWT_JWKS_URI:${conexao-de-sorte-jwt-jwks-uri:https://auth.conexaodesorte.com/.well-known/jwks.json}}
+
   r2dbc:
-    # Preferencialmente usa -database-r2dbc-url; mantém compat com -database-url e define fallback seguro
-    url: ${conexao-de-sorte-database-r2dbc-url:${conexao-de-sorte-database-url:r2dbc:mysql://mysql-proxy:6033/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false}}
-    username: ${conexao-de-sorte-database-username}
-    password: ${conexao-de-sorte-database-password}
+    # Padrão híbrido: Docker Secrets → Azure Key Vault → Fallback
+    url: ${DATABASE_R2DBC_URL:${conexao-de-sorte-database-r2dbc-url:${conexao-de-sorte-database-url:r2dbc:mysql://localhost:3311/conexao_de_sorte_scheduler?useSSL=false&allowPublicKeyRetrieval=true}}}
+    username: ${DATABASE_USERNAME:${conexao-de-sorte-database-username:scheduler_user}}
+    password: ${DATABASE_PASSWORD:${conexao-de-sorte-database-password:scheduler_pass123!}}
+
+  # Redis Configuration - Padrão híbrido
+  data:
+    redis:
+      host: ${REDIS_HOST:${conexao-de-sorte-redis-host:localhost}}
+      port: ${REDIS_PORT:${conexao-de-sorte-redis-port:6379}}
+      password: ${REDIS_PASSWORD:${conexao-de-sorte-redis-password:}}
+      database: ${REDIS_DATABASE:${conexao-de-sorte-redis-database:3}}
+      timeout: 3000ms
   jackson:
     serialization:
-      WRITE_DATES_AS_TIMESTAMPS: false
+      "[WRITE_DATES_AS_TIMESTAMPS]": false
 
 # Habilitar/desabilitar integração manual com Azure Key Vault
-azure.keyvault.enabled: false
+azure:
+  keyvault:
+    enabled: false
 
 management:
   endpoints:
@@ -67,9 +79,10 @@ management:
     health:
       show-details: when-authorized
 
+# CORS Configuration - Padrão híbrido
 cors:
-  allow-credentials: ${conexao-de-sorte-cors-allow-credentials:true}
-  allowed-origins: ${conexao-de-sorte-cors-allowed-origins:*}
+  allow-credentials: ${CORS_ALLOW_CREDENTIALS:${conexao-de-sorte-cors-allow-credentials:true}}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:${conexao-de-sorte-cors-allowed-origins:*}}
 
 scheduler:
   etl:
@@ -114,8 +127,8 @@ resilience4j:
 logging:
   level:
     root: INFO
-    org.springframework.web: INFO
-    br.tec.facilitaservicos.scheduler: INFO
-    io.github.resilience4j: DEBUG
+    "[org.springframework.web]": INFO
+    "[br.tec.facilitaservicos.scheduler]": INFO
+    "[io.github.resilience4j]": DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{jobId:-},%X{modalidade:-},%X{data:-}] %logger{36} - %msg%n"

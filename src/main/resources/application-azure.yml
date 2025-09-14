@@ -23,13 +23,12 @@ spring:
         tenant-id: ${AZURE_TENANT_ID}
         subscription-id: ${AZURE_SUBSCRIPTION_ID}
         client-id: ${AZURE_CLIENT_ID}
-        environment: AZURE
 
-  # Database Configuration for Azure
+  # Database Configuration for Azure - Padrão híbrido
   r2dbc:
-    url: ${conexao-de-sorte-database-r2dbc-url}
-    username: ${conexao-de-sorte-database-username}
-    password: ${conexao-de-sorte-database-password}
+    url: ${DATABASE_R2DBC_URL:${conexao-de-sorte-database-r2dbc-url}}
+    username: ${DATABASE_USERNAME:${conexao-de-sorte-database-username}}
+    password: ${DATABASE_PASSWORD:${conexao-de-sorte-database-password}}
     properties:
       prepStmtCacheSize: 300
       prepStmtCacheSqlLimit: 2048
@@ -37,13 +36,13 @@ spring:
       useServerPrepStmts: true
       rewriteBatchedStatements: true
 
-  # Redis Configuration for Azure
+  # Redis Configuration for Azure - Padrão híbrido
   data:
     redis:
-      host: ${conexao-de-sorte-redis-host}
-      port: ${conexao-de-sorte-redis-port:6379}
-      password: ${conexao-de-sorte-redis-password}
-      database: ${conexao-de-sorte-redis-database:3}
+      host: ${REDIS_HOST:${conexao-de-sorte-redis-host}}
+      port: ${REDIS_PORT:${conexao-de-sorte-redis-port:6379}}
+      password: ${REDIS_PASSWORD:${conexao-de-sorte-redis-password}}
+      database: ${REDIS_DATABASE:${conexao-de-sorte-redis-database:3}}
       timeout: 3000ms
       lettuce:
         pool:
@@ -65,12 +64,12 @@ conexao:
     verification-key: ${conexao-de-sorte-jwt-verification-key}
     private-key: ${conexao-de-sorte-jwt-privateKey}
     public-key: ${conexao-de-sorte-jwt-publicKey}
-  
+
   encryption:
     master-key: ${conexao-de-sorte-encryption-master-key}
     master-password: ${conexao-de-sorte-encryption-master-password}
     backup-key: ${conexao-de-sorte-encryption-backup-key}
-  
+
   database:
     jdbc-url: ${conexao-de-sorte-database-jdbc-url}
     r2dbc-url: ${conexao-de-sorte-database-r2dbc-url}
@@ -82,7 +81,7 @@ conexao:
 server:
   port: ${conexao-de-sorte-server-port:8084}
   shutdown: graceful
-  
+
   # Enhanced security headers for production
   error:
     include-message: never
@@ -97,7 +96,7 @@ management:
       exposure:
         include: health,info,metrics,prometheus,scheduledtasks
       base-path: /actuator
-  
+
   endpoint:
     health:
       show-details: when-authorized
@@ -107,29 +106,26 @@ management:
     scheduledtasks:
       enabled: true
       sensitive: true
-  
+
   health:
     readiness-state:
       enabled: true
     liveness-state:
       enabled: true
-  
+
   # Enhanced metrics for production monitoring
   prometheus:
     metrics:
       export:
         enabled: true
         descriptions: false
-  
+        step: 60s
+
   metrics:
     distribution:
       percentiles:
-        http.server.requests: 0.5,0.95,0.99
-        scheduler.tasks: 0.5,0.95,0.99
-    export:
-      prometheus:
-        enabled: true
-        step: 60s
+        "[http.server.requests]": 0.5,0.95,0.99
+        "[scheduler.tasks]": 0.5,0.95,0.99
 
   # Azure-optimized tracing
   tracing:
@@ -145,15 +141,15 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
-  
+
   level:
-    org.springframework.scheduling: ${SCHEDULER_LOG_LEVEL:INFO}
-    org.springframework.security: ${SECURITY_LOG_LEVEL:WARN}
-    br.tec.facilitaservicos.scheduler: ${APP_LOG_LEVEL:INFO}
-    org.springframework.web: ${WEB_LOG_LEVEL:WARN}
-    org.springframework.r2dbc: ${R2DBC_LOG_LEVEL:WARN}
+    "[org.springframework.scheduling]": ${SCHEDULER_LOG_LEVEL:INFO}
+    "[org.springframework.security]": ${SECURITY_LOG_LEVEL:WARN}
+    "[br.tec.facilitaservicos.scheduler]": ${APP_LOG_LEVEL:INFO}
+    "[org.springframework.web]": ${WEB_LOG_LEVEL:WARN}
+    "[org.springframework.r2dbc]": ${R2DBC_LOG_LEVEL:WARN}
     root: ${ROOT_LOG_LEVEL:WARN}
-  
+
   file:
     name: ${LOG_FILE:/app/logs/scheduler.log}
     max-size: 100MB
@@ -168,7 +164,7 @@ scheduler:
     health-checks: true
     task-persistence: true
     distributed-locking: true
-  
+
   # Task execution settings
   pool:
     core-size: 5
@@ -176,26 +172,26 @@ scheduler:
     queue-capacity: 100
     keep-alive: 300s
     thread-name-prefix: "scheduler-"
-  
+
   # Azure-specific task settings
   tasks:
     lottery-draw:
       enabled: true
       fixed-rate: 3600000  # 1 hour
       initial-delay: 60000  # 1 minute
-    
+
     result-consolidation:
       enabled: true
       cron: "0 5 2 * * *"  # Daily at 2:05 AM
-    
+
     notification-cleanup:
       enabled: true
       cron: "0 0 3 * * *"  # Daily at 3:00 AM
-    
+
     audit-archiving:
       enabled: true
       cron: "0 30 1 * * SUN"  # Weekly on Sunday at 1:30 AM
-    
+
     metrics-aggregation:
       enabled: true
       fixed-rate: 300000  # 5 minutes
@@ -211,7 +207,7 @@ resilience4j:
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
-      
+
       notification-service:
         sliding-window-size: 50
         minimum-number-of-calls: 5

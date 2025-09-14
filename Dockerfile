@@ -101,6 +101,8 @@ ENV CONEXAO_DE_SORTE_DATABASE_URL=${CONEXAO_DE_SORTE_DATABASE_URL} \
 # As flags e perfis devem ser definidos externamente via workflow/deploy
 
 # Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
+# Definir perfil padrão para container
+ENV SPRING_PROFILES_ACTIVE=container
 
 # Expor porta da aplicação
 EXPOSE 8084

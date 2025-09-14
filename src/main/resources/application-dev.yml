@@ -1,0 +1,76 @@
+# =======================================================================
+# 📅 Scheduler - Development Configuration Profile
+# =======================================================================
+# Profile específico para desenvolvimento local com configurações
+# simplificadas e sem dependência do Azure Key Vault
+# =======================================================================
+
+spring:
+  # Database Configuration for Development - Padrão híbrido
+  r2dbc:
+    url: ${DATABASE_R2DBC_URL:${conexao-de-sorte-database-r2dbc-url:r2dbc:mysql://localhost:3311/conexao_de_sorte_scheduler?useSSL=false&allowPublicKeyRetrieval=true}}
+    username: ${DATABASE_USERNAME:${conexao-de-sorte-database-username:scheduler_user}}
+    password: ${DATABASE_PASSWORD:${conexao-de-sorte-database-password:scheduler_pass123!}}
+    properties:
+      prepStmtCacheSize: 100
+      prepStmtCacheSqlLimit: 1024
+      cachePrepStmts: true
+      useServerPrepStmts: true
+
+  # Flyway configuration for migrations - Padrão híbrido
+  flyway:
+    url: ${DATABASE_JDBC_URL:${conexao-de-sorte-database-jdbc-url:jdbc:mysql://localhost:3311/conexao_de_sorte_scheduler?useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true}}
+    user: ${DATABASE_USERNAME:${conexao-de-sorte-database-username:scheduler_user}}
+    password: ${DATABASE_PASSWORD:${conexao-de-sorte-database-password:scheduler_pass123!}}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: false
+
+  # Redis Configuration for Development - Padrão híbrido
+  data:
+    redis:
+      host: ${REDIS_HOST:${conexao-de-sorte-redis-host:localhost}}
+      port: ${REDIS_PORT:${conexao-de-sorte-redis-port:6379}}
+      password: ${REDIS_PASSWORD:${conexao-de-sorte-redis-password:}}
+      database: ${REDIS_DATABASE:${conexao-de-sorte-redis-database:3}}
+      timeout: 3000ms
+
+  # Security Configuration for Development - Padrão híbrido
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER:${conexao-de-sorte-jwt-issuer:https://auth.conexaodesorte.com}}
+          jwk-set-uri: ${JWT_JWKS_URI:${conexao-de-sorte-jwt-jwks-uri:https://auth.conexaodesorte.com/.well-known/jwks.json}}
+
+  # Azure Key Vault disabled for development
+  cloud:
+    azure:
+      keyvault:
+        secret:
+          enabled: false
+
+# Server configuration
+server:
+  port: 8084
+
+# Logging for Development
+logging:
+  level:
+    root: INFO
+    "[br.tec.facilitaservicos]": DEBUG
+    "[org.springframework.r2dbc]": DEBUG
+    "[org.springframework.data.r2dbc]": DEBUG
+    "[io.r2dbc]": DEBUG
+
+# Scheduler configuration
+scheduler:
+  etl:
+    loterias:
+      enabled: true
+      backoff-ms: 1000
+      max-retries: 3
+      modalidades:
+        - megasena
+        - quina
+        - lotofacil

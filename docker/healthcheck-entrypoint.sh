@@ -125,12 +125,20 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     if [ "$1" = "debug" ]; then
         log "🐛 Iniciando em modo DEBUG na porta 5005"
         java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 \
-             -Dspring.profiles.active=dev \
+             -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-dev} \
              -Dlogging.level.br.tec.facilitaservicos=DEBUG \
              -jar /app/app.jar
     else
         log "🚀 Iniciando aplicação em modo normal"
-        java -jar /app/app.jar
+        # Define perfil baseado na variável de ambiente ou padrão para prod
+        PROFILE=${SPRING_PROFILES_ACTIVE:-prod}
+        log "📋 Perfil ativo: $PROFILE"
+
+        java -Dspring.profiles.active=$PROFILE \
+             -Xmx2g \
+             -XX:+UseG1GC \
+             -XX:MaxGCPauseMillis=200 \
+             -jar /app/app.jar
     fi
 
     # Verifica resultado
