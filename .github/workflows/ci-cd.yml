@@ -287,9 +287,21 @@ jobs:
           CORS_ALLOWED_ORIGINS=$(get_secret "conexao-de-sorte-cors-allowed-origins" "https://conexaodesorte.com.br")
           CORS_ALLOW_CREDENTIALS=$(get_secret "conexao-de-sorte-cors-allow-credentials" "false")
           
-          # Criar/atualizar Docker secrets
-          printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password - 2>/dev/null || { docker secret rm scheduler_redis_password; printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password -; }
-          printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret - 2>/dev/null || { docker secret rm scheduler_jwt_secret; printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret -; }
+          # Criar/atualizar Docker secrets com lógica robusta
+          # Se secret existe e serviço está usando, precisa parar o serviço primeiro
+          if docker service ls --filter name="scheduler" --format '{{.Name}}' | grep -qx "scheduler"; then
+            echo "⚠️ Serviço scheduler já existe - removendo para atualizar secrets..."
+            docker service rm scheduler || true
+            sleep 5
+          fi
+          
+          # Remover secrets antigos se existirem
+          docker secret rm scheduler_redis_password 2>/dev/null || true
+          docker secret rm scheduler_jwt_secret 2>/dev/null || true
+          
+          # Criar novos secrets
+          printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password -
+          printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret -
           
           # Salvar variáveis de ambiente para o próximo step
           echo "REDIS_HOST=$REDIS_HOST" >> $GITHUB_ENV
