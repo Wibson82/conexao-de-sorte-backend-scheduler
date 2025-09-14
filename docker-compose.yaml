@@ -57,7 +57,7 @@ services:
       retries: 10  # Limita a 10 tentativas de healthcheck
       start_period: 60s
     networks:
-      - scheduler-network
+      - conexao-network
     volumes:
       - ./logs:/app/logs
 
@@ -86,7 +86,7 @@ services:
     volumes:
       - scheduler-mysql-data:/var/lib/mysql
     networks:
-      - scheduler-network
+      - conexao-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -101,8 +101,8 @@ volumes:
     driver: local
 
 # ========================================
-# 🌐 REDE ISOLADA
+# 🌐 REDE EXTERNA (CONEXÃO COM OUTROS MICROSERVIÇOS)
 # ========================================
 networks:
-  scheduler-network:
-    driver: bridge
+  conexao-network:
+    external: true
