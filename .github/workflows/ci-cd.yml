@@ -331,7 +331,7 @@ jobs:
           set -euo pipefail
           IMAGE="${{ needs.build-image.outputs.image }}"
           SERVICE_NAME="${{ env.SERVICE_NAME }}"
-          PORT=8095
+          PORT=8084
           NETWORK_NAME="conexao-network-swarm"
 
           # Criar rede se não existir

@@ -23,25 +23,27 @@ services:
       - SPRING_PROFILES_ACTIVE=container
 
       # Database Configuration (Docker Secrets + Azure Key Vault fallback)
-      - DATABASE_R2DBC_URL=${DATABASE_R2DBC_URL:-r2dbc:mysql://scheduler-mysql:3306/conexao_sorte_scheduler}
-      - DATABASE_JDBC_URL=${DATABASE_JDBC_URL:-jdbc:mysql://scheduler-mysql:3306/conexao_sorte_scheduler}
-      - DATABASE_USERNAME=${DATABASE_USERNAME:-scheduler_user}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-scheduler_pass123!}
+      # Conecta ao MySQL da infraestrutura compartilhada
+      - DATABASE_R2DBC_URL=${DATABASE_R2DBC_URL:-r2dbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
+      - DATABASE_JDBC_URL=${DATABASE_JDBC_URL:-jdbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
 
       # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-database-r2dbc-url=${conexao-de-sorte-database-r2dbc-url:-r2dbc:mysql://scheduler-mysql:3306/conexao_sorte_scheduler}
-      - conexao-de-sorte-database-jdbc-url=${conexao-de-sorte-database-jdbc-url:-jdbc:mysql://scheduler-mysql:3306/conexao_sorte_scheduler}
-      - conexao-de-sorte-database-username=${conexao-de-sorte-database-username:-scheduler_user}
-      - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:-scheduler_pass123!}
+      - conexao-de-sorte-database-r2dbc-url=${conexao-de-sorte-database-r2dbc-url:-r2dbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
+      - conexao-de-sorte-database-jdbc-url=${conexao-de-sorte-database-jdbc-url:-jdbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
+      - conexao-de-sorte-database-username=${conexao-de-sorte-database-username:-}
+      - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:-}
 
       # Redis Configuration (Docker Secrets + Azure Key Vault fallback)
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      # Conecta ao Redis da infraestrutura compartilhada
+      - REDIS_HOST=${REDIS_HOST:-conexao-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DATABASE=${REDIS_DATABASE:-3}
 
       # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-redis-host=${conexao-de-sorte-redis-host:-redis}
+      - conexao-de-sorte-redis-host=${conexao-de-sorte-redis-host:-conexao-redis}
       - conexao-de-sorte-redis-port=${conexao-de-sorte-redis-port:-6379}
       - conexao-de-sorte-redis-password=${conexao-de-sorte-redis-password:-}
       - conexao-de-sorte-redis-database=${conexao-de-sorte-redis-database:-3}
@@ -71,8 +73,7 @@ services:
       # Logging
       - LOGGING_LEVEL_ROOT=INFO
       - LOGGING_LEVEL_COM_CONEXAODESORTE=DEBUG
-    depends_on:
-      - scheduler-mysql
+    # Conecta aos serviços da infraestrutura-core (externos)
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/actuator/health"]
       interval: 30s
@@ -80,52 +81,26 @@ services:
       retries: 10  # Limita a 10 tentativas de healthcheck
       start_period: 60s
     networks:
-      - conexao-network
+      - conexao-network-swarm
     volumes:
       - ./logs:/app/logs
 
   # ========================================
-  # 🗄️ MYSQL DATABASE (DESENVOLVIMENTO)
+  # 📋 OBSERVAÇÃO: MySQL e Redis fornecidos pela infraestrutura-core
   # ========================================
-  scheduler-mysql:
-    image: mysql:8.0
-    container_name: scheduler-mysql
-    restart: unless-stopped
-    ports:
-      - "3311:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=root_pass123!
-      - MYSQL_DATABASE=conexao_sorte_scheduler
-      - MYSQL_USER=scheduler_user
-      - MYSQL_PASSWORD=scheduler_pass123!
-      - MYSQL_CHARACTER_SET_SERVER=utf8mb4
-      - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
-    command: >
-      --character-set-server=utf8mb4
-      --collation-server=utf8mb4_unicode_ci
-      --default-authentication-plugin=mysql_native_password
-      --innodb-buffer-pool-size=512M
-      --max-connections=150
-    volumes:
-      - scheduler-mysql-data:/var/lib/mysql
-    networks:
-      - conexao-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
+  # O MySQL e Redis são gerenciados pelo projeto infraestrutura-core
+  # Este microserviço conecta aos serviços compartilhados:
 
 # ========================================
 # 💾 VOLUMES PERSISTENTES
 # ========================================
-volumes:
-  scheduler-mysql-data:
-    driver: local
+# Volumes removidos: MySQL próprio foi eliminado
+# Usa infraestrutura compartilhada via conexao-network-swarm
 
 # ========================================
 # 🌐 REDE EXTERNA (CONEXÃO COM OUTROS MICROSERVIÇOS)
 # ========================================
 networks:
-  conexao-network:
+  conexao-network-swarm:
+    name: conexao-network-swarm
     external: true
