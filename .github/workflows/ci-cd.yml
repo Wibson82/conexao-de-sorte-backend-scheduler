@@ -352,12 +352,12 @@ jobs:
               --name "$SERVICE_NAME" \
               --network "$NETWORK_NAME" \
               --detach=false \
-              --publish ${PORT}:8080 \
+              --publish ${PORT}:8084 \
               --secret ${SERVICE_NAME}_redis_password \
               --secret ${SERVICE_NAME}_jwt_secret \
               --env SPRING_PROFILES_ACTIVE=prod,azure \
               --env TZ=America/Sao_Paulo \
-              --env SERVER_PORT=8080 \
+              --env SERVER_PORT=8084 \
               --env SPRING_DATA_REDIS_HOST="${REDIS_HOST:-}" \
               --env SPRING_DATA_REDIS_PORT="${REDIS_PORT:-}" \
               --env SPRING_DATA_REDIS_DATABASE="${REDIS_DATABASE:-}" \
