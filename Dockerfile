@@ -108,7 +108,7 @@ ENV SPRING_PROFILES_ACTIVE=container
 EXPOSE 8084
 
 # Health check nativo
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=10 \
   CMD curl -f http://localhost:8084/actuator/health || exit 1
 
 # Copiar script de entrada robusto com retry e healthcheck

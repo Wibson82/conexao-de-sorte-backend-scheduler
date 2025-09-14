@@ -9,7 +9,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: scheduler-microservice
-    restart: unless-stopped
+    restart: "on-failure:10"  # Limita a 10 tentativas de restart
     ports:
       - "8084:8084"
     environment:
@@ -77,7 +77,7 @@ services:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/actuator/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10  # Limita a 10 tentativas de healthcheck
       start_period: 60s
     networks:
       - scheduler-network
