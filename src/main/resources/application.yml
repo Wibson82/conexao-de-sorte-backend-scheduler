@@ -17,25 +17,21 @@ spring:
   codec:
     max-in-memory-size: 10MB
 
-  # Config import para secrets via ConfigTree (Docker Secrets)
+  # OIDC-only: não importar configtree; falhar se segredos ausentes
   config:
-    import:
-      - optional:configtree:/run/secrets/
-      - optional:configtree:/etc/secrets/azure/
-      - optional:configtree:/mnt/secrets/
-      - optional:file:./secrets.properties
+    import: []
 
-  # Azure Key Vault via Spring Cloud Azure
+  # Azure Key Vault via Spring Cloud Azure (OIDC-only)
   cloud:
     azure:
       keyvault:
         secret:
-          enabled: ${azure.keyvault.enabled:false}
+          enabled: ${AZURE_KEYVAULT_ENABLED:false}
           endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
       profile:
-        tenant-id: ${AZURE_TENANT_ID:}
-        subscription-id: ${AZURE_SUBSCRIPTION_ID:}
-        client-id: ${AZURE_CLIENT_ID:}
+        tenant-id: ${AZURE_TENANT_ID}
+        subscription-id: ${AZURE_SUBSCRIPTION_ID}
+        client-id: ${AZURE_CLIENT_ID}
 
   security:
     oauth2:
@@ -45,18 +41,18 @@ spring:
           jwk-set-uri: ${JWT_JWKS_URI:${conexao-de-sorte-jwt-jwks-uri:https://auth.conexaodesorte.com/.well-known/jwks.json}}
 
   r2dbc:
-    # Padrão híbrido: Docker Secrets → Azure Key Vault → Fallback
-    url: ${DATABASE_R2DBC_URL:${conexao-de-sorte-database-r2dbc-url:${conexao-de-sorte-database-url:r2dbc:mysql://localhost:3311/conexao_de_sorte_scheduler?useSSL=false&allowPublicKeyRetrieval=true}}}
-    username: ${DATABASE_USERNAME:${conexao-de-sorte-database-username:scheduler_user}}
-    password: ${DATABASE_PASSWORD:${conexao-de-sorte-database-password:scheduler_pass123!}}
+    # OIDC-only: exige variáveis ou Key Vault; sem fallback local
+    url: ${DATABASE_R2DBC_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
 
-  # Redis Configuration - Padrão híbrido
+  # Redis Configuration - OIDC-only
   data:
     redis:
-      host: ${REDIS_HOST:${conexao-de-sorte-redis-host:localhost}}
-      port: ${REDIS_PORT:${conexao-de-sorte-redis-port:6379}}
-      password: ${REDIS_PASSWORD:${conexao-de-sorte-redis-password:}}
-      database: ${REDIS_DATABASE:${conexao-de-sorte-redis-database:3}}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      database: ${REDIS_DATABASE}
       timeout: 3000ms
   jackson:
     serialization:

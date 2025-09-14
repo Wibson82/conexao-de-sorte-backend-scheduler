@@ -23,6 +23,27 @@ SECRETS_DIR=${SECRETS_DIR:-/run/secrets}
 R2DBC_FILE="$SECRETS_DIR/spring.r2dbc.url"
 JDBC_FILE="$SECRETS_DIR/spring.flyway.url"
 
+# OIDC-only: fail fast if required envs are missing
+missing_envs() {
+    missing=()
+    [ -z "${DATABASE_R2DBC_URL:-}" ] && missing+=(DATABASE_R2DBC_URL)
+    [ -z "${DATABASE_USERNAME:-}" ] && missing+=(DATABASE_USERNAME)
+    [ -z "${DATABASE_PASSWORD:-}" ] && missing+=(DATABASE_PASSWORD)
+    [ -z "${REDIS_HOST:-}" ] && missing+=(REDIS_HOST)
+    [ -z "${REDIS_PORT:-}" ] && missing+=(REDIS_PORT)
+    [ -z "${REDIS_DATABASE:-}" ] && missing+=(REDIS_DATABASE)
+    if [ "${AZURE_KEYVAULT_ENABLED:-false}" = "true" ]; then
+      [ -z "${AZURE_TENANT_ID:-}" ] && missing+=(AZURE_TENANT_ID)
+      [ -z "${AZURE_CLIENT_ID:-}" ] && missing+=(AZURE_CLIENT_ID)
+      [ -z "${AZURE_KEYVAULT_ENDPOINT:-}" ] && missing+=(AZURE_KEYVAULT_ENDPOINT)
+    fi
+    if [ ${#missing[@]} -gt 0 ]; then
+        log "❌ OIDC: variáveis obrigatórias ausentes: ${missing[*]}"
+        log "ℹ️ Forneça via workflow GitHub OIDC e Azure Key Vault"
+        exit 78
+    fi
+}
+
 # Função para logging com timestamp
 log() {
     echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*"
@@ -119,6 +140,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     log "🚀 Tentativa $RETRY_COUNT/$MAX_RETRIES de iniciar o serviço Scheduler"
 
     # Verificação de pré-requisitos
+    missing_envs
     preflight_db
 
     # Executa a aplicação

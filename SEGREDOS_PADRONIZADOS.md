@@ -4,9 +4,9 @@
 
 Este documento padroniza a nomenclatura de segredos para evitar duplicações e inconsistências que causavam erros como `WRONGPASS invalid username-password pair`.
 
-## 📋 **Mapeamento de Segredos - Padrão ÚNICO**
+## 📋 **Mapeamento de Segredos - Padrão ÚNICO (OIDC-only)**
 
-### **🔴 Redis Configuration**
+### **🔴 Redis Configuration (obrigatórios no runtime)**
 ```yaml
 # ✅ PADRÃO ÚNICO - USE APENAS ESTES
 REDIS_HOST          ↔ conexao-de-sorte-redis-host          ↔ conexao-redis
@@ -15,7 +15,7 @@ REDIS_PASSWORD      ↔ conexao-de-sorte-redis-password      ↔ [senha-do-redis
 REDIS_DATABASE      ↔ conexao-de-sorte-redis-database      ↔ 1
 ```
 
-### **🔴 Database Configuration**
+### **🔴 Database Configuration (obrigatórios no runtime)**
 ```yaml
 # ✅ PADRÃO ÚNICO - USE APENAS ESTES  
 DATABASE_JDBC_URL   ↔ conexao-de-sorte-database-jdbc-url   ↔ jdbc:mysql://...
@@ -57,7 +57,7 @@ ENCRYPTION_MASTER_PASSWORD ↔ conexao-de-sorte-encryption-master-password ↔ [
 ENCRYPTION_BACKUP_KEY      ↔ conexao-de-sorte-encryption-backup-key      ↔ [chave-backup]
 ```
 
-## ❌ **Segredos REMOVIDOS (Duplicados)**
+## ❌ **Segredos REMOVIDOS (Duplicados) e Fallbacks proibidos**
 
 ### **Redis - REMOVIDOS**
 - ~~`conexao-de-sorte-redis-host`~~ → Use `REDIS_HOST`
@@ -72,23 +72,14 @@ ENCRYPTION_BACKUP_KEY      ↔ conexao-de-sorte-encryption-backup-key      ↔ [
 - ~~`conexao-de-sorte-db-password`~~ → Use `DATABASE_PASSWORD`
 - ~~`conexao-de-sorte-database-url`~~ → Use `DATABASE_JDBC_URL`
 
-## 🔧 **Configuração no Spring Boot**
+## 🔧 **Configuração no Spring Boot (OIDC-only)**
 
-### **application.yml - Padrão Híbrido**
-```yaml
-spring:
-  data:
-    redis:
-      host: ${REDIS_HOST:${conexao-de-sorte-redis-host:conexao-redis}}
-      port: ${REDIS_PORT:${conexao-de-sorte-redis-port:6379}}
-      password: ${REDIS_PASSWORD:${conexao-de-sorte-redis-password:}}
-      database: ${REDIS_DATABASE:${conexao-de-sorte-redis-database:1}}
-```
+Sem configtree, sem defaults. A aplicação falha caso as variáveis obrigatórias não estejam presentes ou não possam ser resolvidas via Key Vault.
 
-**Explicação:**
-- **1ª prioridade**: Docker Secret (`REDIS_PASSWORD`)
-- **2ª prioridade**: Azure Key Vault (`conexao-de-sorte-redis-password`)  
-- **3ª prioridade**: Valor padrão (vazio para senha)
+Principais variáveis exigidas:
+- `DATABASE_R2DBC_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_DATABASE`
+- Para Key Vault: `AZURE_KEYVAULT_ENABLED=true`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_KEYVAULT_ENDPOINT`
 
 ## 📝 **Scripts de Correção**
 
@@ -97,16 +88,14 @@ spring:
 ./scripts/fix-redis-secrets.sh
 ```
 
-### **Sincronizar Azure Key Vault**
-```bash
-./.github/workflows/scripts/sync-azure-keyvault-secrets.sh "kv-conexao-de-sorte" "gateway"
-```
+### **Sincronizar Azure Key Vault via CI (OIDC)**
+Os segredos devem ser provisionados no Key Vault e acessados pela aplicação com OIDC. Não executar Azure CLI no runtime.
 
 ## 🎯 **Benefícios da Padronização**
 
 ✅ **Sem duplicações** de segredos  
-✅ **Compatibilidade** Docker Secrets + Azure Key Vault  
-✅ **Fallback automático** entre fontes de segredos  
+✅ **OIDC** via GitHub Actions + Azure Key Vault  
+❌ **Sem fallback** entre fontes de segredos  
 ✅ **Redução de erros** WRONGPASS e similar  
 ✅ **Manutenção simplificada** do ambiente  
 
@@ -114,7 +103,7 @@ spring:
 
 1. **Docker Secrets**: `SNAKE_CASE` maiúsculo (ex: `REDIS_PASSWORD`)
 2. **Azure Key Vault**: `kebab-case` com prefixo (ex: `conexao-de-sorte-redis-password`)  
-3. **Spring Properties**: Híbrido com fallback (ex: `${REDIS_PASSWORD:${conexao-de-sorte-redis-password:}}`)
+3. **Spring Properties**: Sem fallback (ex: `${REDIS_PASSWORD}`)
 
 ## ⚡ **Resolução do Problema Redis**
 
