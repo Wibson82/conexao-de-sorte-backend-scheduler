@@ -13,10 +13,13 @@ spring:
     azure:
       keyvault:
         secret:
-          enabled: true
-          endpoint: ${AZURE_KEYVAULT_ENDPOINT}
+          # Não habilitar por padrão; somente quando AZURE_KEYVAULT_ENABLED=true
+          enabled: ${AZURE_KEYVAULT_ENABLED:false}
+          # Endpoint só é utilizado quando habilitado
+          endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
+          # property-sources mantido, mas efetivo somente quando enabled=true
           property-sources:
-            - endpoint: ${AZURE_KEYVAULT_ENDPOINT}
+            - endpoint: ${AZURE_KEYVAULT_ENDPOINT:}
               name: ${AZURE_KEYVAULT_NAME:kv-conexao-de-sorte}
               case-sensitive: false
       profile:
