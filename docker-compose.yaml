@@ -18,33 +18,33 @@ services:
       - AZURE_TENANT_ID=${AZURE_TENANT_ID}
       - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}
       - AZURE_KEYVAULT_ENDPOINT=${AZURE_KEYVAULT_ENDPOINT}
-      
+
       # Spring Profile
       - SPRING_PROFILES_ACTIVE=azure,prod
-      
+
       # Database Configuration (via Key Vault secrets)
       - conexao-de-sorte-database-r2dbc-url=${conexao-de-sorte-database-r2dbc-url:-r2dbc:mysql://mysql-db:3306/conexao_de_sorte_scheduler}
       - conexao-de-sorte-database-jdbc-url=${conexao-de-sorte-database-jdbc-url:-jdbc:mysql://mysql-db:3306/conexao_de_sorte_scheduler}
       - conexao-de-sorte-database-username=${conexao-de-sorte-database-username:-scheduler_user}
       - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:-scheduler_password}
-      
+
       # Redis Configuration (via Key Vault secrets)
       - conexao-de-sorte-redis-host=${conexao-de-sorte-redis-host:-redis}
       - conexao-de-sorte-redis-port=${conexao-de-sorte-redis-port:-6379}
       - conexao-de-sorte-redis-password=${conexao-de-sorte-redis-password:-redis_password}
       - conexao-de-sorte-redis-database=${conexao-de-sorte-redis-database:-0}
-      
+
       # JWT Configuration (via Key Vault secrets)
       - conexao-de-sorte-jwt-issuer=${conexao-de-sorte-jwt-issuer:-https://auth.conexaodesorte.com}
       - conexao-de-sorte-jwt-jwks-uri=${conexao-de-sorte-jwt-jwks-uri:-https://auth.conexaodesorte.com/.well-known/jwks.json}
-      
+
       # CORS Configuration (via Key Vault secrets)
       - conexao-de-sorte-cors-allowed-origins=${conexao-de-sorte-cors-allowed-origins:-*}
       - conexao-de-sorte-cors-allow-credentials=${conexao-de-sorte-cors-allow-credentials:-true}
-      
+
       # SSL Configuration (via Key Vault secrets)
       - conexao-de-sorte-ssl-enabled=${conexao-de-sorte-ssl-enabled:-false}
-      
+
       # Logging
       - LOGGING_LEVEL_ROOT=INFO
       - LOGGING_LEVEL_COM_CONEXAODESORTE=DEBUG
