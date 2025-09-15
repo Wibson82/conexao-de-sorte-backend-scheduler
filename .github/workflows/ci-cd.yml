@@ -208,38 +208,21 @@ jobs:
           
           echo "🔐 Loading all secrets from Azure Key Vault: $VAULT" >&2
           
-          # Função para obter secret com fallback gracioso
-          get_secret() {
-            local secret_name="$1"
-            local fallback_value="$2"
-            local secret_value
-            
-            # REMOVIDO: az keyvault - usar Docker Secrets
-            if [ -z "$secret_value" ]; then
-              if [ -n "$fallback_value" ]; then
-                echo "⚠️ Secret $secret_name not found, using fallback" >&2
-                echo "$fallback_value"
-              else
-                echo "❌ Secret $secret_name not found and no fallback provided" >&2
-                return 1
-              fi
-            else
-              echo "✅ Secret $secret_name loaded successfully" >&2
-              echo "$secret_value"
-            fi
-          }
-          
-          # Carregar segredos com fallbacks seguros
-          REDIS_HOST=$(get_secret "conexao-de-sorte-redis-host" "localhost")
-          REDIS_PORT=$(get_secret "conexao-de-sorte-redis-port" "6379")
-          REDIS_PASSWORD=$(get_secret "conexao-de-sorte-redis-password" "")
-          REDIS_DATABASE=$(get_secret "conexao-de-sorte-redis-database" "10")
-          
-          JWT_SECRET=$(get_secret "conexao-de-sorte-jwt-secret" "")
-          JWT_ISSUER=$(get_secret "conexao-de-sorte-jwt-issuer" "https://conexaodesorte.com.br")
-          
-          CORS_ALLOWED_ORIGINS=$(get_secret "conexao-de-sorte-cors-allowed-origins" "https://conexaodesorte.com.br")
-          CORS_ALLOW_CREDENTIALS=$(get_secret "conexao-de-sorte-cors-allow-credentials" "false")
+          # SCHEDULER USA APENAS DOCKER SECRETS - Definir fallbacks seguros para variáveis não-secret
+          echo "🔐 Scheduler configurado para usar apenas Docker Secrets em produção"
+
+          # Variáveis não-sensíveis com fallbacks seguros
+          REDIS_HOST="redis"  # Nome do serviço Docker
+          REDIS_PORT="6379"
+          REDIS_DATABASE="10"  # Database específico do scheduler
+
+          JWT_ISSUER="https://conexaodesorte.com.br"
+
+          # Secrets sensíveis serão injetados via Docker Secrets no runtime
+
+          # Variáveis CORS com valores seguros
+          CORS_ALLOWED_ORIGINS="https://conexaodesorte.com.br"
+          CORS_ALLOW_CREDENTIALS="false"
           
           # Criar/atualizar Docker secrets com lógica robusta
           # Se secret existe e serviço está usando, precisa parar o serviço primeiro
@@ -253,9 +236,17 @@ jobs:
           docker secret rm scheduler_redis_password 2>/dev/null || true
           docker secret rm scheduler_jwt_secret 2>/dev/null || true
           
-          # Criar novos secrets
-          printf "%s" "$REDIS_PASSWORD" | docker secret create scheduler_redis_password -
-          printf "%s" "$JWT_SECRET" | docker secret create scheduler_jwt_secret -
+          # O Scheduler usa apenas Docker Secrets criados pelo infraestrutura-core
+          # Verificar se secrets essenciais já existem (criados pelo infraestrutura-core)
+          if ! docker secret ls --filter name=REDIS_PASSWORD --format "{{.Name}}" | grep -q "REDIS_PASSWORD"; then
+            echo "⚠️ Secret REDIS_PASSWORD não encontrado - infraestrutura-core deve rodar primeiro"
+            echo "🔄 Continuando sem criar secrets locais (serão injetados no runtime)"
+          fi
+
+          if ! docker secret ls --filter name=JWT_SECRET --format "{{.Name}}" | grep -q "JWT_SECRET"; then
+            echo "⚠️ Secret JWT_SECRET não encontrado - infraestrutura-core deve rodar primeiro"
+            echo "🔄 Continuando sem criar secrets locais (serão injetados no runtime)"
+          fi
           
           # Salvar variáveis de ambiente para o próximo step
           echo "REDIS_HOST=$REDIS_HOST" >> $GITHUB_ENV
