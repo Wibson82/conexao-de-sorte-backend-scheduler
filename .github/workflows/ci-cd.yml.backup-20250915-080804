@@ -192,7 +192,13 @@ jobs:
       - name: Pull imagem do GHCR
         run: docker pull "${{ needs.build-image.outputs.image }}"
 
-      # REMOVIDO: Azure Login - usar apenas Docker Secrets
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: false
 
       - name: Carregar todos os segredos do Azure Key Vault
         shell: bash
@@ -214,7 +220,7 @@ jobs:
             local fallback_value="$2"
             local secret_value
             
-            # REMOVIDO: az keyvault - usar Docker Secrets
+            secret_value=$(az keyvault secret show --vault-name "$VAULT" --name "$secret_name" --query value -o tsv 2>/dev/null || echo "")
             if [ -z "$secret_value" ]; then
               if [ -n "$fallback_value" ]; then
                 echo "⚠️ Secret $secret_name not found, using fallback" >&2
@@ -307,12 +313,8 @@ jobs:
               --network "$NETWORK_NAME" \
               --detach=false \
               --publish ${PORT}:8084 \
-              --secret source=REDIS_HOST,target=REDIS_HOST \
-              --secret source=REDIS_PORT,target=REDIS_PORT \
-              --secret source=REDIS_PASSWORD,target=REDIS_PASSWORD \
-              --secret source=REDIS_DATABASE,target=REDIS_DATABASE \
-              --secret source=JWT_SECRET,target=JWT_SECRET \
-              --secret source=JWT_ISSUER,target=JWT_ISSUER \
+              --secret ${SERVICE_NAME}_redis_password \
+              --secret ${SERVICE_NAME}_jwt_secret \
               --env SPRING_PROFILES_ACTIVE=prod,azure \
               --env TZ=America/Sao_Paulo \
               --env SERVER_PORT=8084 \
