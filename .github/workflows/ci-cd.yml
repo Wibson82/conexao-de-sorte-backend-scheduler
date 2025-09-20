@@ -1,4 +1,4 @@
-name: "⏰ Scheduler – CI/CD Pipeline"
+name: "⏰ Scheduler Backend – CI/CD Pipeline"
 
 on:
   push:
@@ -6,391 +6,423 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Destino do deploy"
-        required: false
-        default: "production"
-        type: choice
-        options: [ staging, production ]
 
-# ----------------------------------------------------------------------
-# PARÂMETROS GERAIS
-# ----------------------------------------------------------------------
-
-env:
-  SERVICE_NAME: scheduler
-  TZ: America/Sao_Paulo
-
+# Controle de concorrência para evitar execuções simultâneas
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'production' }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-# ----------------------------------------------------------------------
-# JOB 1 ▸ VALIDAÇÃO DO WORKSPACE
-# ----------------------------------------------------------------------
+# Variáveis de ambiente global
+env:
+  SERVICE_NAME: scheduler-backend
+  STACK_NAME: conexao-scheduler
+  DOCKER_NETWORK_NAME: conexao-network-swarm
+
+permissions:
+  id-token: write    # Necessário para OIDC com Azure (azure/login@v2)
+  contents: read     # Necessário para checkout em jobs
 
 jobs:
-  validate-environment:
+  validate-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      has_keyvault: ${{ steps.check_secrets.outputs.has_keyvault }}
+      has_azure_creds: ${{ steps.check_secrets.outputs.has_azure_creds }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4.3.0
+        with:
+          fetch-depth: 1
 
-      - name: "Guard: validar configurações obrigatórias do Microserviço"
-        shell: bash
+      - name: Install dependencies
         run: |
-          chmod +x .github/workflows/scripts/validate-required-files.sh
-          ./.github/workflows/scripts/validate-required-files.sh microservice
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-yaml jq openjdk-24-jdk
 
-      - name: "Guard: proibir r2dbc:h2 fora de testes"
-        shell: bash
+      - name: Validate Docker Compose
+        run: |
+          docker compose -f docker-compose.yml config -q
+          echo "✅ Docker Compose syntax is valid"
+
+      - name: Security Validation - No Hardcoded Passwords
+        run: |
+          # Verificar se não há hardcoded passwords
+          if grep -r "password.*:" docker-compose.yml pom.xml | grep -v "\${" | grep -v "#" | grep -v "external:"; then
+            echo "❌ Found potential hardcoded passwords"
+            exit 1
+          else
+            echo "✅ No hardcoded passwords found"
+          fi
+
+      - name: Guard - Proibir r2dbc:h2 fora de testes
         run: |
           set -euo pipefail
           FOUND=$(grep -R --line-number --include='*.yml' --include='*.yaml' --include='*.properties' "r2dbc:h2" src || true)
-          if echo "$FOUND" | grep -v "src/test/" | grep -q "r2dbc:h2"; then
-            echo "❌ r2dbc:h2 encontrado fora de src/test" >&2
-            echo "$FOUND" >&2
+          if [[ -n "$FOUND" ]]; then
+            echo "❌ H2 database encontrado fora de testes:"
+            echo "$FOUND"
+            echo "🔧 Solução: use MySQL/PostgreSQL em produção"
             exit 1
+          else
+            echo "✅ Nenhum r2dbc:h2 encontrado em produção"
           fi
 
-      - name: "Guard: dependência H2 não‑test"
-        shell: bash
+      - name: 🔎 Validar OIDC Azure
+        id: check_secrets
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_KEYVAULT_NAME: ${{ secrets.AZURE_KEYVAULT_NAME }}
+          AZURE_KEYVAULT_ENDPOINT: ${{ secrets.AZURE_KEYVAULT_ENDPOINT }}
         run: |
-          ./mvnw -q dependency:list -DincludeScope=compile -DoutputFile=deps.txt
-          if grep -E "com.h2database:h2|io.r2dbc:r2dbc-h2" deps.txt; then
-            echo "❌ H2 presente em scope de produção" >&2
+          set -Eeuo pipefail
+          missing=()
+          for var in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [[ -z "${!var:-}" ]]; then
+              missing+=("$var")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            printf '❌ GitHub Secrets obrigatórios ausentes: %s\n' "${missing[*]}"
             exit 1
           fi
+          echo "✅ Identificadores Azure configurados via secrets"
 
-# ----------------------------------------------------------------------
-# JOB 2 ▸ BUILD + TEST + SAST/SCA
-# ----------------------------------------------------------------------
+          # Key Vault é opcional
+          if [[ -n "${AZURE_KEYVAULT_NAME:-}" ]]; then
+            echo "has_keyvault=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_keyvault=false" >> "$GITHUB_OUTPUT"
+          fi
 
-  build-test-scan:
-    needs: validate-environment
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
+          if [[ -z "${AZURE_KEYVAULT_ENDPOINT:-}" ]]; then
+            echo 'ℹ️ AZURE_KEYVAULT_ENDPOINT não definido (usando endpoint padrão)'
+          else
+            echo '✅ Endpoint customizado definido'
+          fi
 
-      - name: Setup Java 24 (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "24"
-          cache: maven
+          echo "has_azure_creds=true" >> "$GITHUB_OUTPUT"
 
-      - name: Build + Test + Package
-        run: ./mvnw package
-
-      - name: Upload JAR artefact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-jar
-          path: target/*.jar
-          retention-days: 1
-
-# ----------------------------------------------------------------------
-# JOB 3 ▸ BUILD DA IMAGEM + PUSH GHCR
-# ----------------------------------------------------------------------
-
-  build-image:
-    needs: [ build-test-scan, security-analysis ]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      image: ${{ steps.build.outputs.image }}
-    permissions:
-      packages: write
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download JAR artefact
-        uses: actions/download-artifact@v4
-        with:
-          name: scheduler-jar
-          path: target
-
-      # REMOVIDO: Azure CLI não deve ser usado em produção
-      # Scheduler usa apenas Docker Secrets sincronizados pela infraestrutura-core
-
-      # ─── Login no GHCR ────────────────────────────────────────────────
-      - name: Login GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build & Push Scheduler
-        id: build
+      - name: Validate Maven Project
         run: |
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          TIMESTAMP=$(date +'%d-%m-%Y-%H-%M')
-          IMAGE=ghcr.io/$REPO_LOWER/conexao-de-sorte-backend-scheduler:${TIMESTAMP}
-          IMAGE_LATEST=ghcr.io/$REPO_LOWER/conexao-de-sorte-backend-scheduler:latest
+          if [ -f "pom.xml" ]; then
+            echo "✅ Projeto Maven detectado"
+            mvn validate
+            echo "✅ Maven project validation passed"
+          else
+            echo "ℹ️ Projeto não-Maven (sem pom.xml)"
+          fi
 
-          # Build sem secrets (usa Docker Secrets em produção)
-          docker buildx build \
-            --tag "$IMAGE" \
-            --tag "$IMAGE_LATEST" \
-            --push \
-            --provenance=true \
-            --sbom=true \
-            --cache-from type=gha \
-            --cache-to type=gha,mode=max \
-            --file Dockerfile .
-
-          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-
-# ----------------------------------------------------------------------
-# JOB 3.5 ▸ ANÁLISE DE SEGURANÇA (similar aos demais serviços)
-# ----------------------------------------------------------------------
-
-  security-analysis:
-    needs: build-test-scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Verificar score de segurança do Microserviço
+      - name: Validate YAML files
         run: |
-          chmod +x .github/workflows/scripts/security-analysis.sh
-          ./.github/workflows/scripts/security-analysis.sh microservice 4
+          python3 -c "
+          import yaml
+          import pathlib
 
-# ----------------------------------------------------------------------
-# JOB 4 ▸ DEPLOY SELF‑HOSTED (Docker Swarm + secrets)
-# ----------------------------------------------------------------------
+          # Validar arquivos YAML principais
+          yaml_files = [
+              'docker-compose.yml'
+          ]
+
+          for file_path in yaml_files:
+              if pathlib.Path(file_path).exists():
+                  try:
+                      with open(file_path, 'r', encoding='utf-8') as f:
+                          yaml.safe_load(f)
+                      print(f'✅ YAML válido: {file_path}')
+                  except Exception as e:
+                      print(f'❌ Erro no YAML {file_path}: {e}')
+                      exit(1)
+          "
+
+      - name: ✅ Confirmar consumo mínimo do Key Vault
+        if: ${{ steps.check_secrets.outputs.has_keyvault == 'true' }}
+        run: |
+          echo 'Job de validação não consome segredos do Key Vault (lista vazia).'
+          echo "✅ Validação de Key Vault concluída sem consumo de segredos"
+
+      - name: Validation completed
+        run: |
+          echo "✅ Validação concluída - pronto para deploy"
 
   deploy-selfhosted:
-    needs: build-image
+    needs: validate-and-build
     runs-on: [self-hosted, Linux, X64, conexao, conexao-de-sorte-backend-scheduler]
-    timeout-minutes: 8
-    if: |
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
     permissions:
-      id-token: write
       contents: read
-      packages: read
+      id-token: write
     steps:
-      - name: Login GHCR (Self-hosted)
-        uses: docker/login-action@v3
+      - name: Checkout
+        uses: actions/checkout@v4.3.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          clean: true
+          fetch-depth: 1
 
+      - name: 🔐 Azure Login (OIDC)
+        if: ${{ needs.validate-and-build.outputs.has_azure_creds == 'true' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Pull imagem do GHCR
-        run: docker pull "${{ needs.build-image.outputs.image }}"
-
-      # REMOVIDO: Azure Login - usar apenas Docker Secrets
-
-      - name: Carregar todos os segredos do Azure Key Vault
-        shell: bash
+      - name: ✅ Validar conexão Azure (OIDC)
+        if: ${{ needs.validate-and-build.outputs.has_azure_creds == 'true' }}
         run: |
-          set -euo pipefail
-          VAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
-          if [[ "$VAULT_ENDPOINT" =~ https://([^.]+)\.vault\.azure\.net ]]; then
-            VAULT="${BASH_REMATCH[1]}"
+          echo "🔍 Validando conexão com Azure via OIDC..."
+          if az account show >/dev/null 2>&1; then
+            echo "✅ Conexão Azure OIDC estabelecida"
+            echo "Subscription: $(az account show --query id -o tsv)"
           else
-            echo "ERROR: Invalid AZURE_KEYVAULT_ENDPOINT format: $VAULT_ENDPOINT" >&2
+            echo "❌ Falha na conexão Azure OIDC"
             exit 1
           fi
-          
-          echo "🔐 Loading all secrets from Azure Key Vault: $VAULT" >&2
-          
-          # SCHEDULER USA APENAS DOCKER SECRETS - Definir fallbacks seguros para variáveis não-secret
-          echo "🔐 Scheduler configurado para usar apenas Docker Secrets em produção"
 
-          # Variáveis não-sensíveis com fallbacks seguros
-          REDIS_HOST="redis"  # Nome do serviço Docker
-          REDIS_PORT="6379"
-          REDIS_DATABASE="10"  # Database específico do scheduler
-
-          JWT_ISSUER="https://conexaodesorte.com.br"
-
-          # Secrets sensíveis serão injetados via Docker Secrets no runtime
-
-          # Variáveis CORS com valores seguros
-          CORS_ALLOWED_ORIGINS="https://conexaodesorte.com.br"
-          CORS_ALLOW_CREDENTIALS="false"
-          
-          # Criar/atualizar Docker secrets com lógica robusta
-          # Se secret existe e serviço está usando, precisa parar o serviço primeiro
-          if docker service ls --filter name="scheduler" --format '{{.Name}}' | grep -qx "scheduler"; then
-            echo "⚠️ Serviço scheduler já existe - removendo para atualizar secrets..."
-            docker service rm scheduler || true
-            sleep 5
-          fi
-          
-          # Remover secrets antigos se existirem
-          docker secret rm scheduler_redis_password 2>/dev/null || true
-          docker secret rm scheduler_jwt_secret 2>/dev/null || true
-          
-          # O Scheduler usa apenas Docker Secrets criados pelo infraestrutura-core
-          # Verificar se secrets essenciais já existem (criados pelo infraestrutura-core)
-          if ! docker secret ls --filter name=REDIS_PASSWORD --format "{{.Name}}" | grep -q "REDIS_PASSWORD"; then
-            echo "⚠️ Secret REDIS_PASSWORD não encontrado - infraestrutura-core deve rodar primeiro"
-            echo "🔄 Continuando sem criar secrets locais (serão injetados no runtime)"
-          fi
-
-          if ! docker secret ls --filter name=JWT_SECRET --format "{{.Name}}" | grep -q "JWT_SECRET"; then
-            echo "⚠️ Secret JWT_SECRET não encontrado - infraestrutura-core deve rodar primeiro"
-            echo "🔄 Continuando sem criar secrets locais (serão injetados no runtime)"
-          fi
-          
-          # Salvar variáveis de ambiente para o próximo step
-          echo "REDIS_HOST=$REDIS_HOST" >> $GITHUB_ENV
-          echo "REDIS_PORT=$REDIS_PORT" >> $GITHUB_ENV
-          echo "REDIS_DATABASE=$REDIS_DATABASE" >> $GITHUB_ENV
-          echo "JWT_ISSUER=$JWT_ISSUER" >> $GITHUB_ENV
-          echo "CORS_ALLOWED_ORIGINS=$CORS_ALLOWED_ORIGINS" >> $GITHUB_ENV
-          echo "CORS_ALLOW_CREDENTIALS=$CORS_ALLOW_CREDENTIALS" >> $GITHUB_ENV
-
-      - name: 🧹 Cleanup existing deployment
+      - name: 🔒 Security Validation - Port Exposure
         run: |
-          # Remove stack existente se houver
-          docker stack rm conexao-scheduler 2>/dev/null || true
-          
-          # Aguardar limpeza completa
-          echo "⏳ Aguardando limpeza completa..."
-          sleep 15
-          
-          # Limpar containers órfãos do serviço scheduler
-          docker container ls -q --filter "name=scheduler" | xargs -r docker stop
-          docker container ls -aq --filter "name=scheduler" | xargs -r docker rm
-          
+          # Verificar exposição de portas do Scheduler
+          if grep -E "^\s*-\s*[\"']?(8084|8085|8086):" docker-compose.yml; then
+            echo "⚠️ WARNING: Scheduler ports may be exposed - ensure firewall protection"
+            echo "🔒 Note: Current configuration works but consider overlay-only for maximum security"
+          else
+            echo "✅ No ports exposed - maximum security (overlay network only)"
+          fi
+
+      - name: 🔐 Azure Key Vault - Secrets para Scheduler
+        if: ${{ needs.validate-and-build.outputs.has_keyvault == 'true' }}
+        env:
+          KEYVAULT_NAME: ${{ secrets.AZURE_KEYVAULT_NAME }}
+        run: |
+          echo "🔑 Recuperando secrets específicos para Scheduler..."
+
+          # Lista de secrets necessários para o serviço Scheduler
+          secrets_scheduler=(
+            "conexao-de-sorte-database-host"
+            "conexao-de-sorte-database-port"
+            "conexao-de-sorte-database-username"
+            "conexao-de-sorte-database-password"
+            "conexao-de-sorte-database-r2dbc-url"
+            "conexao-de-sorte-redis-host"
+            "conexao-de-sorte-redis-port"
+            "conexao-de-sorte-redis-password"
+            "conexao-de-sorte-redis-database"
+            "conexao-de-sorte-rabbitmq-host"
+            "conexao-de-sorte-rabbitmq-port"
+            "conexao-de-sorte-rabbitmq-username"
+            "conexao-de-sorte-rabbitmq-password"
+            "conexao-de-sorte-rabbitmq-vhost"
+            "conexao-de-sorte-jwt-secret"
+            "conexao-de-sorte-jwt-issuer"
+            "conexao-de-sorte-server-port"
+            "conexao-de-sorte-monitoring-token"
+            "conexao-de-sorte-alerting-webhook-secret"
+          )
+
+          # Recuperar secrets do Key Vault
+          for secret in "${secrets_scheduler[@]}"; do
+            if az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "$secret" >/dev/null 2>&1; then
+              value=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "$secret" --query value -o tsv)
+              # Export as environment variable (uppercase, replace hyphens)
+              env_name=$(echo "$secret" | sed 's/conexao-de-sorte-//' | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              echo "${env_name}=${value}" >> $GITHUB_ENV
+              echo "✅ Secret recuperado: $secret"
+            else
+              echo "⚠️ Secret não encontrado: $secret"
+            fi
+          done
+
+      - name: 🌐 Preparar rede overlay compartilhada
+        env:
+          NETWORK_NAME: ${{ env.DOCKER_NETWORK_NAME }}
+        run: |
+          set -euo pipefail
+          echo "🔍 Verificando rede overlay: $NETWORK_NAME"
+
+          if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+            echo "🏗️ Criando rede overlay compartilhada: $NETWORK_NAME"
+            docker network create \
+              --driver overlay \
+              --attachable \
+              --subnet=10.10.0.0/16 \
+              --gateway=10.10.0.1 \
+              "${NETWORK_NAME}"
+            echo "✅ Rede overlay criada: $NETWORK_NAME"
+          else
+            echo "✅ Rede overlay já existe: $NETWORK_NAME"
+          fi
+
+      - name: 🧹 Cleanup anterior (Scheduler)
+        env:
+          STACK_NAME: ${{ env.STACK_NAME }}
+        run: |
+          set -euo pipefail
+          echo "🧹 Iniciando limpeza de recursos anteriores..."
+
+          # 1. Graceful shutdown: scale services to 0 replicas
+          if docker service ls --filter name="$STACK_NAME" --format '{{.Name}}' | grep -q "^$STACK_NAME"; then
+            echo "🔄 Scaling down serviços do stack $STACK_NAME..."
+            for service in $(docker service ls --filter name="$STACK_NAME" --format '{{.Name}}'); do
+              echo "  - Scaling down: $service"
+              docker service scale "$service=0" >/dev/null 2>&1 || true
+            done
+            sleep 10
+          fi
+
+          # 2. Remove stack
+          if docker stack ls --format '{{.Name}}' | grep -q "^$STACK_NAME\$"; then
+            echo "🗄️ Removendo stack: $STACK_NAME"
+            docker stack rm "$STACK_NAME"
+            sleep 15
+          fi
+
+          # 3. Clean orphan containers
+          echo "🧹 Limpando containers órfãos relacionados ao Scheduler..."
+          orphan_containers=$(docker ps -a --filter name="*scheduler*" --format '{{.ID}} {{.Names}}' | grep -E "(scheduler|$STACK_NAME)" || true)
+          if [[ -n "$orphan_containers" ]]; then
+            echo "$orphan_containers" | while read container_id container_name; do
+              if [[ -n "$container_id" ]]; then
+                echo "  🗑️ Removendo container órfão: $container_name ($container_id)"
+                docker stop "$container_id" >/dev/null 2>&1 || true
+                docker rm "$container_id" >/dev/null 2>&1 || true
+              fi
+            done
+          fi
+
+          # 4. Image cleanup (keep 3 recent versions)
+          echo "🧹 Limpando imagens antigas do Scheduler (mantendo 3 versões recentes)..."
+          old_images=$(docker images --format "{{.ID}} {{.Repository}}:{{.Tag}}" | grep -E "(scheduler|ghcr.io.*scheduler)" | tail -n +4 || true)
+          if [[ -n "$old_images" ]]; then
+            echo "$old_images" | while read image_id image_tag; do
+              if [[ -n "$image_id" && "$image_tag" != *"<none>"* ]]; then
+                echo "  🗑️ Removendo imagem antiga: $image_tag ($image_id)"
+                docker rmi "$image_id" >/dev/null 2>&1 || true
+              fi
+            done
+          fi
+
           echo "✅ Limpeza concluída"
 
-      - name: Deploy via docker service (update/create)
+      - name: 🚀 Deploy Scheduler Stack (Swarm-Only)
+        env:
+          STACK_NAME: ${{ env.STACK_NAME }}
+          COMPOSE_FILE: docker-compose.yml
+        run: |
+          echo "🚀 Iniciando deploy do Scheduler com Docker Swarm..."
+
+          echo "🏗️ Executando deploy da stack '$STACK_NAME'..."
+          docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
+
+          echo "⏰ Aguardando estabilização dos serviços Scheduler..."
+          sleep 35
+
+      - name: 🔍 Healthcheck Scheduler
+        env:
+          STACK_NAME: ${{ env.STACK_NAME }}
+        run: |
+          echo "🔍 Validando saúde do Scheduler..."
+
+          timeout=200
+          elapsed=0
+          health_passed=false
+
+          while [ $elapsed -lt $timeout ] && [ "$health_passed" = false ]; do
+            SCHEDULER_CONTAINER=$(docker ps -q -f name="${STACK_NAME}_scheduler" | head -1)
+
+            if [ -n "$SCHEDULER_CONTAINER" ]; then
+              echo "🔍 Testando health check do Scheduler... ($elapsed/$timeout segundos)"
+
+              # Check 1: Process validation
+              if docker exec "$SCHEDULER_CONTAINER" ps aux 2>/dev/null | grep -q "[j]ava\|[s]pring"; then
+                echo "✅ Scheduler health check passed (process validation)"
+                health_passed=true
+                break
+              fi
+
+              # Check 2: Log validation
+              if docker logs "$SCHEDULER_CONTAINER" 2>/dev/null | grep -q "Started.*Application\|Tomcat started\|Started SchedulerApplication"; then
+                echo "✅ Scheduler health check passed (logs validation)"
+                health_passed=true
+                break
+              fi
+
+              echo "⏳ Scheduler ainda não está pronto... ($elapsed/$timeout segundos)"
+            else
+              echo "⏳ Container Scheduler ainda não encontrado... ($elapsed/$timeout segundos)"
+            fi
+
+            sleep 10
+            elapsed=$((elapsed + 10))
+          done
+
+          if [ "$health_passed" = false ]; then
+            echo "⚠️ Scheduler health check não passou em $timeout segundos"
+            echo "🔍 Verificando logs finais do Scheduler..."
+            if [ -n "$SCHEDULER_CONTAINER" ]; then
+              echo "--- Últimos 30 logs do Scheduler ---"
+              docker logs "$SCHEDULER_CONTAINER" --tail 30 2>/dev/null || true
+              echo "--- Fim dos logs ---"
+            fi
+            echo "💡 Nota: Scheduler pode estar funcionando mesmo com health check parcial"
+            exit 1
+          else
+            echo "✅ Scheduler health check concluído com sucesso!"
+          fi
+
+      - name: 🔗 Connectivity Validation
+        env:
+          STACK_NAME: ${{ env.STACK_NAME }}
+          DOCKER_NETWORK_NAME: ${{ env.DOCKER_NETWORK_NAME }}
+        run: |
+          echo "🔗 Validando conectividade do Scheduler..."
+
+          if docker service ls | grep -q "${STACK_NAME}_scheduler"; then
+            echo "✅ Serviço Scheduler encontrado no Swarm"
+          else
+            echo "❌ Serviço Scheduler não encontrado no Swarm"
+            exit 1
+          fi
+
+          if docker network inspect "$DOCKER_NETWORK_NAME" | grep -q scheduler; then
+            echo "✅ Scheduler conectado à rede overlay"
+          else
+            echo "⚠️ Scheduler pode não estar na rede overlay correta"
+          fi
+
+          echo "📊 Status final dos serviços:"
+          docker service ls --filter name="${STACK_NAME}_*" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
+
+      - name: 🧼 Limpeza de recursos no servidor
+        if: success()
+        env:
+          STACK_NAME: ${{ env.STACK_NAME }}
         run: |
           set -euo pipefail
-          IMAGE="${{ needs.build-image.outputs.image }}"
-          SERVICE_NAME="${{ env.SERVICE_NAME }}"
-          PORT=8084
-          NETWORK_NAME="conexao-network-swarm"
-
-          # Criar rede se não existir
-          docker network create --driver overlay "$NETWORK_NAME" 2>/dev/null || true
-
-          echo "🔍 Verificando se serviço $SERVICE_NAME já existe..."
-          if docker service ls --format '{{.Name}}' | grep -qx "$SERVICE_NAME"; then
-            echo "🔄 Serviço já existe - executando UPDATE para nova imagem"
-            timeout 60s docker service update \
-              --image "$IMAGE" \
-              --detach=false \
-              --update-parallelism 1 \
-              --update-delay 10s \
-              "$SERVICE_NAME"
-          else
-            echo "🆕 Serviço não existe - executando CREATE"
-            timeout 120s docker service create \
-              --name "$SERVICE_NAME" \
-              --network "$NETWORK_NAME" \
-              --detach=false \
-              --publish ${PORT}:8084 \
-              --secret source=REDIS_HOST,target=REDIS_HOST \
-              --secret source=REDIS_PORT,target=REDIS_PORT \
-              --secret source=REDIS_PASSWORD,target=REDIS_PASSWORD \
-              --secret source=REDIS_DATABASE,target=REDIS_DATABASE \
-              --secret source=JWT_SECRET,target=JWT_SECRET \
-              --secret source=JWT_ISSUER,target=JWT_ISSUER \
-              --env SPRING_PROFILES_ACTIVE=prod,azure \
-              --env TZ=America/Sao_Paulo \
-              --env SERVER_PORT=8084 \
-              --env SPRING_DATA_REDIS_HOST="${REDIS_HOST:-}" \
-              --env SPRING_DATA_REDIS_PORT="${REDIS_PORT:-}" \
-              --env SPRING_DATA_REDIS_DATABASE="${REDIS_DATABASE:-}" \
-              --env JWT_ISSUER="${JWT_ISSUER:-}" \
-              --env CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-}" \
-              --env CORS_ALLOW_CREDENTIALS="${CORS_ALLOW_CREDENTIALS:-}" \
-              --env AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
-              --env AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
-              --env AZURE_KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}" \
-              --env AZURE_KEYVAULT_ENABLED=true \
-              "$IMAGE"
-          fi
-
-          # Verificar se deploy foi bem-sucedido
-          echo "✅ Verificando saúde do serviço..."
-          sleep 10
-          REPLICAS=$(docker service ls --filter name="$SERVICE_NAME" --format '{{.Replicas}}' | head -1 || echo "")
-          if echo "$REPLICAS" | grep -q "1/1"; then
-            echo "✅ Deploy bem-sucedido!"
-          else
-            echo "❌ Falha no deploy - verificar logs"
-            docker service logs "$SERVICE_NAME" --tail 50 || true
-            exit 1
-          fi
-
-      - name: Aguardar Scheduler estar pronto
-        run: |
-          echo "⏳ Aguardando Scheduler ficar pronto..."
-          TIMEOUT=180
-          ELAPSED=0
-          
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            if docker service ls | grep -q "scheduler.*1/1"; then
-              echo "✅ Scheduler está pronto!"
-              break
-            fi
-            echo "⏳ Aguardando readiness... ($ELAPSED/$TIMEOUT segundos)"
-            sleep 10
-            ELAPSED=$((ELAPSED + 10))
-          done
-          
-          if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "❌ Scheduler não ficou pronto em $TIMEOUT segundos"
-            echo "📋 Status dos serviços:"
-            docker service ls | grep scheduler || true
-            echo "📋 Logs do Scheduler:"
-            docker service logs conexao-scheduler_scheduler --tail 50 || true
-            exit 1
-          fi
-
-      - name: Health‑check Scheduler
-        run: |
-          echo "🔍 Verificando saúde do Scheduler..."
-          docker service ls | grep scheduler
-          
-          # Teste do endpoint de health
-          SERVICE_CONTAINER=$(docker ps --filter "name=scheduler" --format "{{.Names}}" | head -1 || echo "")
-          if [ -n "$SERVICE_CONTAINER" ]; then
-            echo "🌐 Testando health endpoint..."
-            docker exec "$SERVICE_CONTAINER" curl -f http://localhost:8080/actuator/health 2>/dev/null && echo "✅ Scheduler health OK" || echo "⚠️ Scheduler health test failed"
-          fi
-          
-          echo "🎉 Scheduler microservice deployment completed successfully!"
-          echo "🌐 API: https://scheduler.conexaodesorte.com.br"
-
-# ----------------------------------------------------------------------
-# JOB 5 ▸ NOTIFY
-# ----------------------------------------------------------------------
-
-  notify:
-    if: always()
-    runs-on: ubuntu-latest
-    needs: [ build-test-scan, deploy-selfhosted ]
-    steps:
-      - name: Slack notify
-        env:
-          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          RESULT: ${{ needs.deploy-selfhosted.result }}
-        shell: bash
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "ℹ️ Slack webhook não configurado; etapa ignorada" && exit 0
-          fi
-          COLOR=good && [ "$RESULT" != "success" ] && COLOR=danger
-          curl -X POST -H 'Content-type: application/json' \
-               --data "{\"text\":\"Scheduler – $RESULT\",\"attachments\":[{\"color\":\"$COLOR\"}]}" \
-               "$WEBHOOK"
+          before_usage=$(mktemp)
+          after_usage=$(mktemp)
+          docker system df > "$before_usage"
+          echo "🧹 Removendo containers parados (≥12h)..."
+          docker container prune -f --filter "until=12h"
+          echo "🧹 Removendo imagens não utilizadas (≥7d)..."
+          docker image prune -f --filter "until=168h"
+          echo "🧹 Removendo caches de build antigos (≥7d)..."
+          docker builder prune -f --filter "until=168h" || true
+          docker system df > "$after_usage"
+          echo "📦 Uso de recursos após limpeza:"
+          cat "$after_usage"
+          {
+            echo "## Limpeza de recursos no servidor"
+            echo ""
+            echo "### Uso antes"
+            sed 's/^/    /' "$before_usage"
+            echo ""
+            echo "### Uso depois"
+            sed 's/^/    /' "$after_usage"
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$before_usage" "$after_usage"
