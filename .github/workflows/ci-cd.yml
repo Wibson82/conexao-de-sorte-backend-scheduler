@@ -398,6 +398,50 @@ jobs:
           echo "📊 Status final dos serviços:"
           docker service ls --filter name="${STACK_NAME}_*" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
 
+      - name: 🏥 Validar Health Monitor (Traefik)
+        env:
+          HEALTH_MONITOR_URL: https://traefik.conexaodesorte.com.br/health/service/scheduler
+        run: |
+          set -euo pipefail
+          timeout=300
+          interval=10
+          elapsed=0
+          last_response=""
+
+          while [ $elapsed -lt $timeout ]; do
+            echo "🔎 Consultando Health Monitor (${elapsed}/${timeout}s)..."
+            response=$(curl -sf --max-time 10 "$HEALTH_MONITOR_URL" 2>/dev/null || true)
+            last_response="$response"
+
+            if [[ -n "$response" ]]; then
+              status=$(printf '%s' "$response" | python3 - <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    print(data.get("status", ""))
+except Exception:
+    pass
+PY
+)
+              status=${status//$'\n'/}
+              echo "📊 Status reportado pelo monitor: ${status:-indefinido}"
+
+              if [[ "$status" == "healthy" ]]; then
+                echo "✅ Traefik confirmou Scheduler como healthy"
+                exit 0
+              fi
+            else
+              echo "⚠️ Health Monitor sem resposta (tentativa atual)"
+            fi
+
+            sleep "$interval"
+            elapsed=$((elapsed + interval))
+          done
+
+          echo "❌ Health Monitor nao confirmou Scheduler como healthy apos ${timeout}s"
+          echo "📝 Ultima resposta recebida: ${last_response:-<sem resposta>}"
+          exit 1
+
       - name: 🧼 Limpeza de recursos no servidor
         if: success()
         env:
