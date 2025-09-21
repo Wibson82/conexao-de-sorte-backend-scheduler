@@ -195,48 +195,37 @@ jobs:
             echo "✅ No ports exposed - maximum security (overlay network only)"
           fi
 
-      - name: 🔐 Azure Key Vault - Secrets para Scheduler
-        if: ${{ needs.validate-and-build.outputs.has_keyvault == 'true' }}
-        env:
-          KEYVAULT_NAME: ${{ secrets.AZURE_KEYVAULT_NAME }}
+      - name: 🔐 Get secrets from Azure Key Vault
+        uses: azure/get-keyvault-secrets@v1
+        with:
+          keyvault: "kv-conexao-de-sorte"
+          secrets: |
+            conexao-de-sorte-database-r2dbc-url
+            conexao-de-sorte-database-username
+            conexao-de-sorte-database-password
+            conexao-de-sorte-redis-host
+            conexao-de-sorte-redis-port
+            conexao-de-sorte-redis-password
+            conexao-de-sorte-redis-database
+            conexao-de-sorte-rabbitmq-host
+            conexao-de-sorte-rabbitmq-port
+            conexao-de-sorte-rabbitmq-username
+            conexao-de-sorte-rabbitmq-password
+            conexao-de-sorte-rabbitmq-vhost
+            conexao-de-sorte-jwt-secret
+            conexao-de-sorte-jwt-issuer
+            conexao-de-sorte-jwt-signing-key
+            conexao-de-sorte-jwt-verification-key
+            conexao-de-sorte-server-port
+        id: kv
+
+      - name: 🔒 Mask sensitive values
         run: |
-          echo "🔑 Recuperando secrets específicos para Scheduler..."
-
-          # Lista de secrets necessários para o serviço Scheduler
-          secrets_scheduler=(
-            "conexao-de-sorte-database-host"
-            "conexao-de-sorte-database-port"
-            "conexao-de-sorte-database-username"
-            "conexao-de-sorte-database-password"
-            "conexao-de-sorte-database-r2dbc-url"
-            "conexao-de-sorte-redis-host"
-            "conexao-de-sorte-redis-port"
-            "conexao-de-sorte-redis-password"
-            "conexao-de-sorte-redis-database"
-            "conexao-de-sorte-rabbitmq-host"
-            "conexao-de-sorte-rabbitmq-port"
-            "conexao-de-sorte-rabbitmq-username"
-            "conexao-de-sorte-rabbitmq-password"
-            "conexao-de-sorte-rabbitmq-vhost"
-            "conexao-de-sorte-jwt-secret"
-            "conexao-de-sorte-jwt-issuer"
-            "conexao-de-sorte-server-port"
-            "conexao-de-sorte-monitoring-token"
-            "conexao-de-sorte-alerting-webhook-secret"
-          )
-
-          # Recuperar secrets do Key Vault
-          for secret in "${secrets_scheduler[@]}"; do
-            if az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "$secret" >/dev/null 2>&1; then
-              value=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "$secret" --query value -o tsv)
-              # Export as environment variable (uppercase, replace hyphens)
-              env_name=$(echo "$secret" | sed 's/conexao-de-sorte-//' | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-              echo "${env_name}=${value}" >> $GITHUB_ENV
-              echo "✅ Secret recuperado: $secret"
-            else
-              echo "⚠️ Secret não encontrado: $secret"
-            fi
-          done
+          echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-database-password }}"
+          echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-redis-password }}"
+          echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-password }}"
+          echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-jwt-secret }}"
+          echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-jwt-signing-key }}"
 
       - name: 🌐 Preparar rede overlay compartilhada
         env:
@@ -313,6 +302,28 @@ jobs:
         env:
           STACK_NAME: ${{ env.STACK_NAME }}
           COMPOSE_FILE: docker-compose.yml
+          # Banco de Dados
+          CONEXAO_DE_SORTE_DATABASE_R2DBC_URL: ${{ steps.kv.outputs.conexao-de-sorte-database-r2dbc-url }}
+          CONEXAO_DE_SORTE_DATABASE_USERNAME: ${{ steps.kv.outputs.conexao-de-sorte-database-username }}
+          CONEXAO_DE_SORTE_DATABASE_PASSWORD: ${{ steps.kv.outputs.conexao-de-sorte-database-password }}
+          # Redis
+          CONEXAO_DE_SORTE_REDIS_HOST: ${{ steps.kv.outputs.conexao-de-sorte-redis-host }}
+          CONEXAO_DE_SORTE_REDIS_PORT: ${{ steps.kv.outputs.conexao-de-sorte-redis-port }}
+          CONEXAO_DE_SORTE_REDIS_PASSWORD: ${{ steps.kv.outputs.conexao-de-sorte-redis-password }}
+          CONEXAO_DE_SORTE_REDIS_DATABASE: ${{ steps.kv.outputs.conexao-de-sorte-redis-database }}
+          # RabbitMQ
+          CONEXAO_DE_SORTE_RABBITMQ_HOST: ${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-host }}
+          CONEXAO_DE_SORTE_RABBITMQ_PORT: ${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-port }}
+          CONEXAO_DE_SORTE_RABBITMQ_USERNAME: ${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-username }}
+          CONEXAO_DE_SORTE_RABBITMQ_PASSWORD: ${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-password }}
+          CONEXAO_DE_SORTE_RABBITMQ_VHOST: ${{ steps.kv.outputs.conexao-de-sorte-rabbitmq-vhost }}
+          # JWT
+          CONEXAO_DE_SORTE_JWT_SECRET: ${{ steps.kv.outputs.conexao-de-sorte-jwt-secret }}
+          CONEXAO_DE_SORTE_JWT_ISSUER: ${{ steps.kv.outputs.conexao-de-sorte-jwt-issuer }}
+          CONEXAO_DE_SORTE_JWT_SIGNING_KEY: ${{ steps.kv.outputs.conexao-de-sorte-jwt-signing-key }}
+          CONEXAO_DE_SORTE_JWT_VERIFICATION_KEY: ${{ steps.kv.outputs.conexao-de-sorte-jwt-verification-key }}
+          # Server
+          CONEXAO_DE_SORTE_SERVER_PORT: ${{ steps.kv.outputs.conexao-de-sorte-server-port }}
         run: |
           echo "🚀 Iniciando deploy do Scheduler com Docker Swarm..."
 
