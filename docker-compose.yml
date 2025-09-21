@@ -4,13 +4,8 @@ services:
   # 🗓️ MICROSERVIÇO SCHEDULER (ETL/JOB)
   # ========================================
   scheduler-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: scheduler-microservice
+    image: ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest
     restart: "on-failure:10"  # Limita a 10 tentativas de restart
-    ports:
-      - "8084:8084"
     environment:
       # Azure Key Vault Configuration
       - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
@@ -82,7 +77,16 @@ services:
     networks:
       - conexao-network-swarm
     volumes:
-      - ./logs:/app/logs
+      - scheduler-logs:/app/logs
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   # ========================================
   # 📋 OBSERVAÇÃO: MySQL e Redis fornecidos pela infraestrutura-core
@@ -103,3 +107,6 @@ networks:
   conexao-network-swarm:
     name: conexao-network-swarm
     external: true
+
+volumes:
+  scheduler-logs:
