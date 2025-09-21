@@ -10,8 +10,8 @@ spring:
     name: conexao-scheduler
 
   profiles:
-    default: dev
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+    default: prod
+    active: ${SPRING_PROFILES_ACTIVE:prod}
   main:
     web-application-type: reactive
   codec:
