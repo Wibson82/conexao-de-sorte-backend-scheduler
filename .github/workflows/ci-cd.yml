@@ -1,4 +1,4 @@
-name: "⏰ Scheduler Backend – CI/CD Pipeline"
+name: "⏰ Scheduler Backend - CI/CD Pipeline"
 
 on:
   push:
