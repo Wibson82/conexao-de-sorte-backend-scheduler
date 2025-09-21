@@ -26,12 +26,12 @@ services:
       - conexao-de-sorte-database-r2dbc-url=${conexao-de-sorte-database-r2dbc-url:-r2dbc:mysql://mysql-db:3306/conexao_de_sorte_scheduler}
       - conexao-de-sorte-database-jdbc-url=${conexao-de-sorte-database-jdbc-url:-jdbc:mysql://mysql-db:3306/conexao_de_sorte_scheduler}
       - conexao-de-sorte-database-username=${conexao-de-sorte-database-username:-scheduler_user}
-      - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:-scheduler_password}
+      - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:?Database password required from Azure Key Vault}
 
       # Redis Configuration (via Key Vault secrets)
       - conexao-de-sorte-redis-host=${conexao-de-sorte-redis-host:-redis}
       - conexao-de-sorte-redis-port=${conexao-de-sorte-redis-port:-6379}
-      - conexao-de-sorte-redis-password=${conexao-de-sorte-redis-password:-redis_password}
+      - conexao-de-sorte-redis-password=${conexao-de-sorte-redis-password:?Redis password required from Azure Key Vault}
       - conexao-de-sorte-redis-database=${conexao-de-sorte-redis-database:-0}
 
       # JWT Configuration (via Key Vault secrets)
