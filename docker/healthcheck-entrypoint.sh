@@ -1,184 +1,44 @@
 #!/bin/sh
 # ============================================================================
-# 🚀 SCRIPT DE ENTRADA PARA CONTAINER COM HEALTHCHECK E RETRY LIMITADO
+# 🚀 SCRIPT DE ENTRADA PARA CONTAINER SIMPLIFICADO (SWARM COMPATÍVEL)
 # ============================================================================
 #
-# Este script implementa:
-# - Verificação de conexão com banco de dados
-# - Tentativas limitadas de inicialização (máx 10)
-# - Tempo de espera entre tentativas (30 segundos)
-# - Logs detalhados de diagnóstico
+# Este script inicia a aplicação Java.
+# A descoberta de serviços e a resiliência são gerenciadas pelo Docker Swarm.
 #
-# @version 1.0
-# @since 2025-09-14
+# @version 2.0
+# @since 2025-09-21
 # ============================================================================
 
 set -e
-
-# Variáveis de configuração
-MAX_RETRIES=10
-RETRY_INTERVAL=30
-RETRY_COUNT=0
-SECRETS_DIR=${SECRETS_DIR:-/run/secrets}
-R2DBC_FILE="$SECRETS_DIR/spring.r2dbc.url"
-JDBC_FILE="$SECRETS_DIR/spring.flyway.url"
-
-# OIDC-only: fail fast if required envs are missing
-missing_envs() {
-    missing=()
-    [ -z "${DATABASE_R2DBC_URL:-}" ] && missing+=(DATABASE_R2DBC_URL)
-    [ -z "${DATABASE_USERNAME:-}" ] && missing+=(DATABASE_USERNAME)
-    [ -z "${DATABASE_PASSWORD:-}" ] && missing+=(DATABASE_PASSWORD)
-    [ -z "${REDIS_HOST:-}" ] && missing+=(REDIS_HOST)
-    [ -z "${REDIS_PORT:-}" ] && missing+=(REDIS_PORT)
-    [ -z "${REDIS_DATABASE:-}" ] && missing+=(REDIS_DATABASE)
-    if [ "${AZURE_KEYVAULT_ENABLED:-false}" = "true" ]; then
-      [ -z "${AZURE_TENANT_ID:-}" ] && missing+=(AZURE_TENANT_ID)
-      [ -z "${AZURE_CLIENT_ID:-}" ] && missing+=(AZURE_CLIENT_ID)
-      [ -z "${AZURE_KEYVAULT_ENDPOINT:-}" ] && missing+=(AZURE_KEYVAULT_ENDPOINT)
-    fi
-    if [ ${#missing[@]} -gt 0 ]; then
-        log "❌ OIDC: variáveis obrigatórias ausentes: ${missing[*]}"
-        log "ℹ️ Forneça via workflow GitHub OIDC e Azure Key Vault"
-        exit 78
-    fi
-}
 
 # Função para logging com timestamp
 log() {
     echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*"
 }
 
-# Verifica se o comando nc está disponível
-has_nc() {
-    command -v nc >/dev/null 2>&1;
-}
+log "🚀 Iniciando aplicação Java..."
 
-# Tenta conectar em um host:porta
-can_connect() {
-    host="$1"
-    port="$2"
-    if has_nc; then
-        nc -z -w 2 "$host" "$port" >/dev/null 2>&1
-    else
-        (echo > /dev/tcp/"$host"/"$port") >/dev/null 2>&1 || return 1
-    fi
-}
+# Executa a aplicação Java
+if [ "$1" = "debug" ]; then
+    log "🐛 Iniciando em modo DEBUG na porta 5005"
+    java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 \
+         -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-dev} \
+         -Dlogging.level.br.tec.facilitaservicos=DEBUG \
+         -jar /app/app.jar
+else
+    log "🚀 Iniciando aplicação em modo normal"
+    # Define perfil baseado na variável de ambiente ou padrão para prod
+    PROFILE=${SPRING_PROFILES_ACTIVE:-prod}
+    log "📋 Perfil ativo: $PROFILE"
 
-# Reescreve as URLs de conexão com banco
-rewrite_urls() {
-    new_hostport="$1"
-    if [ -f "$R2DBC_FILE" ]; then
-        r2dbc=$(cat "$R2DBC_FILE")
-        proto="r2dbc:mysql://"
-        rest="${r2dbc#${proto}}"
-        rest_no_host="${rest#*/}"
-        echo "${proto}${new_hostport}/${rest_no_host}" > "$R2DBC_FILE"
-    fi
+    java -Dspring.profiles.active=$PROFILE \
+         -Xmx2g \
+         -XX:+UseG1GC \
+         -XX:MaxGCPauseMillis=200 \
+         -jar /app/app.jar
+fi
 
-    if [ -f "$JDBC_FILE" ]; then
-        jdbc=$(cat "$JDBC_FILE")
-        proto="jdbc:mysql://"
-        rest="${jdbc#${proto}}"
-        rest_no_host="${rest#*/}"
-        echo "${proto}${new_hostport}/${rest_no_host}" > "$JDBC_FILE"
-    fi
-}
-
-# Verificação de conectividade com banco
-preflight_db() {
-    [ -f "$R2DBC_FILE" ] || return 0
-
-    url=$(cat "$R2DBC_FILE")
-    base="${url#r2dbc:mysql://}"
-    hostport="${base%%/*}"
-    host="${hostport%%:*}"
-    port="${hostport#*:}"
-    [ "$port" = "$host" ] && port=3306
-
-    log "🔍 Verificando conexão com banco de dados em $host:$port..."
-
-    if can_connect "$host" "$port"; then
-        log "✅ Conexão bem-sucedida com banco de dados em $host:$port"
-        return 0
-    fi
-
-    log "⚠️ Não foi possível conectar ao banco em $host:$port, tentando alternativas..."
-
-    for alt in "conexao-mysql" "scheduler-mysql" "mysql-db" "host.docker.internal"; do
-        log "🔄 Tentando alternativa: $alt:$port"
-        if can_connect "$alt" "$port"; then
-            log "✅ Conexão alternativa bem-sucedida em $alt:$port"
-            rewrite_urls "$alt:$port"
-            return 0
-        fi
-    done
-
-    gw=$(ip route 2>/dev/null | awk "/default/ {print $3; exit}")
-    if [ -n "${gw:-}" ] && can_connect "$gw" "$port"; then
-        log "✅ Conexão via gateway bem-sucedida em $gw:$port"
-        rewrite_urls "$gw:$port"
-        return 0
-    fi
-
-    if can_connect 127.0.0.1 "$port" || can_connect localhost "$port"; then
-        log "✅ Conexão via localhost bem-sucedida"
-        rewrite_urls "127.0.0.1:$port"
-        return 0
-    fi
-
-    log "❌ Não foi possível estabelecer conexão com o banco de dados após tentar múltiplas alternativas"
-    return 1
-}
-
-# Loop de tentativas com limite
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    # Incrementa contador
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-
-    # Mostra tentativa atual
-    log "🚀 Tentativa $RETRY_COUNT/$MAX_RETRIES de iniciar o serviço Scheduler"
-
-    # Verificação de pré-requisitos
-    missing_envs
-    preflight_db
-
-    # Executa a aplicação
-    if [ "$1" = "debug" ]; then
-        log "🐛 Iniciando em modo DEBUG na porta 5005"
-        java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 \
-             -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-dev} \
-             -Dlogging.level.br.tec.facilitaservicos=DEBUG \
-             -jar /app/app.jar
-    else
-        log "🚀 Iniciando aplicação em modo normal"
-        # Define perfil baseado na variável de ambiente ou padrão para prod
-        PROFILE=${SPRING_PROFILES_ACTIVE:-prod}
-        log "📋 Perfil ativo: $PROFILE"
-
-        java -Dspring.profiles.active=$PROFILE \
-             -Xmx2g \
-             -XX:+UseG1GC \
-             -XX:MaxGCPauseMillis=200 \
-             -jar /app/app.jar
-    fi
-
-    # Verifica resultado
-    RESULT=$?
-
-    # Se aplicação saiu com sucesso ou foi interrompida pelo usuário, sai do loop
-    if [ $RESULT -eq 0 ] || [ $RESULT -eq 130 ] || [ $RESULT -eq 143 ]; then
-        log "✅ Aplicação encerrada normalmente com código $RESULT"
-        exit $RESULT
-    fi
-
-    # Se atingiu o número máximo de tentativas, termina com erro
-    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        log "❌ Número máximo de tentativas atingido ($MAX_RETRIES). Encerrando com erro."
-        exit 1
-    fi
-
-    # Aguarda antes da próxima tentativa
-    log "⏳ Aguardando $RETRY_INTERVAL segundos antes da próxima tentativa..."
-    sleep $RETRY_INTERVAL
-done
+# O script deve sair com o código de saída da aplicação Java
+# O Docker Swarm e o healthcheck do Dockerfile/docker-compose.yml
+# irão gerenciar a resiliência e o restart em caso de falha.
