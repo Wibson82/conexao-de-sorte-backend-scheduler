@@ -414,7 +414,7 @@ jobs:
             last_response="$response"
 
             if [[ -n "$response" ]]; then
-)
+              status=$(echo "$response" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
               status=${status//$'\n'/}
               echo "📊 Status reportado pelo monitor: ${status:-indefinido}"
 
