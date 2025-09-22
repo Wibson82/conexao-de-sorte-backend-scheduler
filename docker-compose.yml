@@ -88,6 +88,36 @@ services:
         reservations:
           memory: 512M
 
+    # ==========================================================================
+    # 🏷️ TRAEFIK LABELS - SCHEDULER HEALTH MONITORING
+    # ==========================================================================
+    labels:
+      # Habilitar Traefik para este serviço
+      - "traefik.enable=true"
+      - "traefik.docker.network=conexao-network-swarm"
+
+      # Configuração do serviço Scheduler
+      - "traefik.http.services.scheduler-service.loadbalancer.server.port=8085"
+      - "traefik.http.services.scheduler-service.loadbalancer.healthcheck.path=/actuator/health"
+      - "traefik.http.services.scheduler-service.loadbalancer.healthcheck.interval=30s"
+
+      # Health check individual do Scheduler
+      - "traefik.http.routers.scheduler-health.rule=Host(`traefik.conexaodesorte.com.br`) && PathPrefix(`/health/service/scheduler`)"
+      - "traefik.http.routers.scheduler-health.entrypoints=websecure"
+      - "traefik.http.routers.scheduler-health.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.scheduler-health.service=scheduler-service"
+      - "traefik.http.routers.scheduler-health.middlewares=scheduler-health-rewrite"
+
+      # Middleware para reescrever path do health check
+      - "traefik.http.middlewares.scheduler-health-rewrite.replacepath.path=/actuator/health"
+
+      # Metadata do serviço
+      - "org.opencontainers.image.title=Conexão de Sorte - Scheduler"
+      - "org.opencontainers.image.description=Microserviço de agendamento e processamento ETL"
+      - "org.opencontainers.image.version=1.0.0"
+      - "microservice.type=scheduler"
+      - "microservice.category=etl"
+
   # ========================================
   # 📋 OBSERVAÇÃO: MySQL e Redis fornecidos pela infraestrutura-core
   # ========================================
