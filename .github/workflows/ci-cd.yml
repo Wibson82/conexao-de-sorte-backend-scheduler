@@ -196,27 +196,46 @@ jobs:
           fi
 
       - name: 🔐 Get secrets from Azure Key Vault
-        uses: azure/get-keyvault-secrets@v1
-        with:
-          keyvault: "kv-conexao-de-sorte"
-          secrets: |
-            conexao-de-sorte-database-r2dbc-url
-            conexao-de-sorte-database-username
-            conexao-de-sorte-database-password
-            conexao-de-sorte-redis-host
-            conexao-de-sorte-redis-port
-            conexao-de-sorte-redis-password
-            conexao-de-sorte-redis-database
-            conexao-de-sorte-rabbitmq-host
-            conexao-de-sorte-rabbitmq-port
-            conexao-de-sorte-rabbitmq-username
-            conexao-de-sorte-rabbitmq-password
-            conexao-de-sorte-rabbitmq-vhost
-            conexao-de-sorte-jwt-secret
-            conexao-de-sorte-jwt-issuer
-            conexao-de-sorte-jwt-signing-key
-            conexao-de-sorte-jwt-verification-key
-            conexao-de-sorte-server-port
+        run: |
+          # Usar endpoint do Key Vault se disponível, senão usar nome
+          KEYVAULT_ENDPOINT="${{ secrets.AZURE_KEYVAULT_ENDPOINT }}"
+          if [[ -n "$KEYVAULT_ENDPOINT" ]]; then
+            # Extrair o nome do Key Vault do endpoint (formato: `https://nome-do-keyvault.vault.azure.net/)`
+            KEYVAULT_NAME=$(echo "$KEYVAULT_ENDPOINT" | sed 's|https://\(.*\)\.vault\.azure\.net/.*|\1|')
+            echo "🔑 Usando Key Vault do endpoint: $KEYVAULT_NAME"
+          else
+            KEYVAULT_NAME="${{ secrets.AZURE_KEYVAULT_NAME }}"
+            echo "🔑 Usando Key Vault do nome: $KEYVAULT_NAME"
+          fi
+          
+          # Usar Azure CLI diretamente para obter segredos
+          echo "🔍 Obtendo segredos do Key Vault: $KEYVAULT_NAME"
+          
+          secrets_list="conexao-de-sorte-database-r2dbc-url,conexao-de-sorte-database-username,conexao-de-sorte-database-password,conexao-de-sorte-redis-host,conexao-de-sorte-redis-port,conexao-de-sorte-redis-password,conexao-de-sorte-redis-database,conexao-de-sorte-rabbitmq-host,conexao-de-sorte-rabbitmq-port,conexao-de-sorte-rabbitmq-username,conexao-de-sorte-rabbitmq-password,conexao-de-sorte-rabbitmq-vhost,conexao-de-sorte-jwt-secret,conexao-de-sorte-jwt-issuer,conexao-de-sorte-jwt-signing-key,conexao-de-sorte-jwt-verification-key,conexao-de-sorte-server-port"
+          
+          IFS=',' read -ra SECRETS_ARRAY <<< "$secrets_list"
+          for secret_name in "${SECRETS_ARRAY[@]}"; do
+            echo "🔍 Obtendo segredo: $secret_name"
+            secret_value=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "$secret_name" --query 'value' -o tsv 2>/dev/null || echo "")
+            
+            if [[ -n "$secret_value" ]]; then
+              echo "✅ Segredo obtido: $secret_name"
+              # Salvar com o nome original (com traços) para compatibilidade com o step de validação
+              echo "${secret_name}=${secret_value}" >> $GITHUB_OUTPUT
+              # Também salvar como variável de ambiente para uso posterior
+              env_var_name=$(echo "$secret_name" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+              echo "${env_var_name}=${secret_value}" >> $GITHUB_ENV
+            else
+              echo "⚠️ Segredo não encontrado: $secret_name"
+            fi
+          done
+          
+          echo "✅ Obtenção de segredos concluída"
+        shell: /usr/bin/bash -e {0}
+        env:
+          SERVICE_NAME: scheduler
+          STACK_NAME: conexao-scheduler
+          DOCKER_NETWORK_NAME: conexao-network-swarm
         id: kv
 
       - name: 🔒 Mask sensitive values
