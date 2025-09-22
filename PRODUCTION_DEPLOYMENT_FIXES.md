@@ -29,14 +29,14 @@
 # deployment.yaml ou docker-compose.yml
 environment:
   - SPRING_PROFILES_ACTIVE=prod  # ← CRÍTICO: Mudar de "dev" para "prod"
-  
+
   # Azure Key Vault via Spring Cloud Azure (obrigatório para produção)
   - spring.cloud.azure.keyvault.secret.enabled=true
   - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
   - AZURE_KEYVAULT_ENDPOINT=${AZURE_KEYVAULT_ENDPOINT}
   - AZURE_TENANT_ID=${AZURE_TENANT_ID}
   - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}
-  
+
   # SSL habilitado
   - conexao-de-sorte-ssl-enabled=true
   - conexao-de-sorte-ssl-keystore-path=/app/ssl/keystore.p12

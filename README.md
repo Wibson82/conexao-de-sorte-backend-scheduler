@@ -362,7 +362,7 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para de
 
 ---
 
-**🔐 Microserviço de Autenticação - Conexão de Sorte**  
+**🔐 Microserviço de Autenticação - Conexão de Sorte**
 *Segurança, Performance e Confiabilidade*
 ## ✅ Qualidade e Segurança (CI)
 

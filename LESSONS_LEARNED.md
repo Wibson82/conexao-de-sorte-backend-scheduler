@@ -17,7 +17,7 @@
 
 ### 🔧 **1. Configuração Redis Padronizada**
 **Problema:** Configuração Redis inconsistente entre microserviços
-**Solução:** 
+**Solução:**
 ```yaml
 spring:
   data:
@@ -43,7 +43,7 @@ spring:
 
 ### ❌ **Pool Redis Inadequado**
 **Sintoma:** Conexões Redis esgotadas em produção
-**Solução:** 
+**Solução:**
 - `max-active: 20` (não 8)
 - `min-idle: 2` (não 0)
 - `max-wait: 3000ms`

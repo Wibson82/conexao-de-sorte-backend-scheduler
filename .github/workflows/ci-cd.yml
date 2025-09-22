@@ -38,10 +38,16 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'liberica'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 python3-yaml jq openjdk-25-jdk
+          sudo apt-get install -y python3 python3-yaml jq
 
       - name: Validate Docker Compose
         run: |
