@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 python3-yaml jq openjdk-24-jdk
+          sudo apt-get install -y python3 python3-yaml jq openjdk-25-jdk
 
       - name: Validate Docker Compose
         run: |

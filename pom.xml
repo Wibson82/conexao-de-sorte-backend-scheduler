@@ -289,7 +289,7 @@
                 <configuration>
                     <release>${java.version}</release>
                     <jdkToolchain>
-                        <version>[24,)</version>
+                        <version>[25,)</version>
                     </jdkToolchain>
                     <compilerArgs>
                         <arg>-Xlint:deprecation</arg>
@@ -299,7 +299,7 @@
                 </configuration>
             </plugin>
 
-            <!-- DESABILITADO: Maven Surefire Plugin devido incompatibilidade Java 24 com Mockito -->
+            <!-- DESABILITADO: Maven Surefire Plugin devido incompatibilidade Java 25 com Mockito -->
             <!-- <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -375,7 +375,7 @@
                 <artifactId>spotbugs-maven-plugin</artifactId>
                 <version>4.9.4.0</version>
                 <dependencies>
-                    <!-- Override SpotBugs version for better Java 24 support -->
+                    <!-- Override SpotBugs version for better Java 25 support -->
                     <dependency>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs</artifactId>
@@ -411,7 +411,7 @@
                 <configuration>
                     <rules>
                         <requireJavaVersion>
-                            <version>[24,)</version>
+                            <version>[25,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
                             <version>[3.9.0,)</version>

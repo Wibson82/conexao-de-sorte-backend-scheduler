@@ -1,6 +1,6 @@
 # 🔐 Microserviço de Autenticação - Conexão de Sorte
 
-[![Java](https://img.shields.io/badge/Java-24-orange.svg)](https://openjdk.java.net/projects/jdk/24/)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.java.net/projects/jdk/25/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![WebFlux](https://img.shields.io/badge/WebFlux-Reactive-blue.svg)](https://docs.spring.io/spring-framework/docs/current/reference/html/web-reactive.html)
 [![R2DBC](https://img.shields.io/badge/R2DBC-MySQL-blue.svg)](https://r2dbc.io/)
@@ -99,7 +99,7 @@ src/main/java/br/tec/facilitaservicos/autenticacao/
 ## ⚡ Início Rápido
 
 ### Pré-requisitos
-- ☕ **Java 24+**
+- ☕ **Java 25+**
 - 🐳 **Docker & Docker Compose**
 - 📦 **Maven 3.9+**
 

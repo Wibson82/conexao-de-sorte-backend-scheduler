@@ -54,7 +54,7 @@ java -Xmx2g -XX:+UseG1GC -Dspring.profiles.active=prod -jar app.jar
 
 #### 3. Dockerfile Produção:
 ```dockerfile
-FROM openjdk:24-jdk-slim
+FROM openjdk:25-jdk-slim
 
 # Não expor porta de debug
 # EXPOSE 5005  ← REMOVER ESTA LINHA
@@ -75,7 +75,7 @@ CMD ["java", "${JAVA_OPTS}", "-jar", "/app/autenticacao.jar"]
 # start-auth-service.sh
 
 export SPRING_PROFILES_ACTIVE=prod
-export JAVA_HOME=/opt/java/24
+export JAVA_HOME=/opt/java/25
 
 # Variáveis do Azure Key Vault via Spring Cloud Azure
 export spring_cloud_azure_keyvault_secret_enabled=true

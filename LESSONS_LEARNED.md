@@ -7,7 +7,7 @@
 ## 🎯 **METADADOS DO MICROSERVIÇO**
 - **Nome:** conexao-de-sorte-backend-autenticacao
 - **Responsabilidade:** Autenticação JWT, gerenciamento de usuários, tokens
-- **Tecnologias:** Spring Boot 3.5.5, WebFlux, R2DBC, Java 24
+- **Tecnologias:** Spring Boot 3.5.5, WebFlux, R2DBC, Java 25
 - **Porta:** 8081
 - **Última Atualização:** 2025-08-27
 
@@ -87,7 +87,7 @@ spring:
 ### **2025-08-27**
 - ✅ Redis: Corrigido `max-total` → `max-active`, adicionado `database: 0`
 - ✅ Verificação segurança: Sem problemas encontrados
-- ✅ Versões: Spring Boot 3.5.5, Java 24 mantidos
+- ✅ Versões: Spring Boot 3.5.5, Java 25 mantidos
 
 ---
 
