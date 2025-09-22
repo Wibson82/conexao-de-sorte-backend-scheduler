@@ -4,7 +4,7 @@
 #
 # Dockerfile otimizado para microserviço de scheduler com:
 # - Multi-stage build para reduzir tamanho da imagem
-# - Java 24 com JVM otimizada para containers
+# - Java 25 LTS com JVM otimizada para containers
 # - Usuário não-root para segurança
 # - Health check nativo
 # - Otimizações de performance para OAuth2/JWT
@@ -19,7 +19,7 @@
 # ============================================================================
 
 # === ESTÁGIO 1: BUILD ===
-FROM maven:3.9.11-eclipse-temurin-24-alpine AS builder
+FROM maven:3.9.11-eclipse-temurin-25-alpine AS builder
 
 # Metadados da imagem
 LABEL maintainer="Conexão de Sorte <tech@conexaodesorte.com>"
@@ -54,7 +54,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     -Dmaven.compiler.optimize=true
 
 # === ESTÁGIO 2: RUNTIME ===
-FROM eclipse-temurin:24-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 
 # Instalar dependências do sistema
 RUN apk add --no-cache \
@@ -97,7 +97,7 @@ ENV CONEXAO_DE_SORTE_DATABASE_URL=${CONEXAO_DE_SORTE_DATABASE_URL} \
     CONEXAO_DE_SORTE_DATABASE_PASSWORD=${CONEXAO_DE_SORTE_DATABASE_PASSWORD} \
     CONEXAO_DE_SORTE_JWT_ISSUER=${CONEXAO_DE_SORTE_JWT_ISSUER} \
     CONEXAO_DE_SORTE_JWT_JWKS_URI=${CONEXAO_DE_SORTE_JWT_JWKS_URI}
-## JVM otimizada para containers: flags removidas para compatibilidade total com Java 24
+## JVM otimizada para containers: flags removidas para compatibilidade total com Java 25 LTS
 # As flags e perfis devem ser definidos externamente via workflow/deploy
 
 # Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
@@ -105,7 +105,7 @@ ENV CONEXAO_DE_SORTE_DATABASE_URL=${CONEXAO_DE_SORTE_DATABASE_URL} \
 ENV SPRING_PROFILES_ACTIVE=container
 
 # Expor porta da aplicação
-EXPOSE 8084
+
 
 # Health check nativo
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=10 \
@@ -142,7 +142,7 @@ ENV JAVA_OPTS="$JAVA_OPTS \
     -Dlogging.level.br.tec.facilitaservicos=DEBUG"
 
 # Expor porta de debug
-EXPOSE 5005
+
 
 # Comando para debug com retry
 ENTRYPOINT ["/app/docker-entrypoint.sh", "debug"]
