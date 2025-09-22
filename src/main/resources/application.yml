@@ -41,19 +41,30 @@ spring:
           jwk-set-uri: ${JWT_JWKS_URI:${conexao-de-sorte-jwt-jwks-uri:https://auth.conexaodesorte.com/.well-known/jwks.json}}
 
   r2dbc:
-    # OIDC-only: exige variáveis ou Key Vault; sem fallback local
-    url: ${DATABASE_R2DBC_URL}
-    username: ${DATABASE_USERNAME}
-    password: ${DATABASE_PASSWORD}
+    # Padrão concatenação: secret base + parâmetros específicos
+    url: ${conexao-de-sorte-database-r2dbc-url}/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false&serverTimezone=America/Sao_Paulo
+    username: ${conexao-de-sorte-database-username}
+    password: ${conexao-de-sorte-database-password}
 
-  # Redis Configuration - OIDC-only
+  # Redis Configuration
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      password: ${REDIS_PASSWORD}
-      database: ${REDIS_DATABASE}
+      host: ${conexao-de-sorte-redis-host:conexao-redis}
+      port: ${conexao-de-sorte-redis-port:6379}
+      password: ${conexao-de-sorte-redis-password}
+      database: ${conexao-de-sorte-redis-database:8}  # DB 8 para scheduler
       timeout: 3000ms
+
+  # Flyway para migrations
+  flyway:
+    enabled: true
+    url: ${conexao-de-sorte-database-jdbc-url}/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false&serverTimezone=America/Sao_Paulo
+    user: ${conexao-de-sorte-database-username}
+    password: ${conexao-de-sorte-database-password}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
   jackson:
     serialization:
       "[WRITE_DATES_AS_TIMESTAMPS]": false
