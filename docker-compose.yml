@@ -3,81 +3,33 @@ services:
   # ========================================
   # 🗓️ MICROSERVIÇO SCHEDULER (ETL/JOB)
   # ========================================
-  scheduler-service:
+  scheduler:
     image: ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest
-    restart: "on-failure:10"  # Limita a 10 tentativas de restart
     environment:
-      # Azure Key Vault Configuration
-      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
-      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
-      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}
-      - AZURE_KEYVAULT_ENDPOINT=${AZURE_KEYVAULT_ENDPOINT}
-
-      # Spring Profile
-      - SPRING_PROFILES_ACTIVE=container
-
-      # Database Configuration (Docker Secrets + Azure Key Vault fallback)
-      # Conecta ao MySQL da infraestrutura compartilhada
-      - DATABASE_R2DBC_URL=${DATABASE_R2DBC_URL:-r2dbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
-      - DATABASE_JDBC_URL=${DATABASE_JDBC_URL:-jdbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
-      - DATABASE_USERNAME=${DATABASE_USERNAME:-}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
-
-      # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-database-r2dbc-url=${conexao-de-sorte-database-r2dbc-url:-r2dbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
-      - conexao-de-sorte-database-jdbc-url=${conexao-de-sorte-database-jdbc-url:-jdbc:mysql://conexao-mysql:3306/conexao_sorte_scheduler}
-      - conexao-de-sorte-database-username=${conexao-de-sorte-database-username:-}
-      - conexao-de-sorte-database-password=${conexao-de-sorte-database-password:-}
-
-      # Redis Configuration (Docker Secrets + Azure Key Vault fallback)
-      # Conecta ao Redis da infraestrutura compartilhada
-      - REDIS_HOST=${REDIS_HOST:-conexao-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DATABASE=${REDIS_DATABASE:-3}
-
-      # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-redis-host=${conexao-de-sorte-redis-host:-conexao-redis}
-      - conexao-de-sorte-redis-port=${conexao-de-sorte-redis-port:-6379}
-      - conexao-de-sorte-redis-password=${conexao-de-sorte-redis-password:-}
-      - conexao-de-sorte-redis-database=${conexao-de-sorte-redis-database:-3}
-
-      # JWT Configuration (Docker Secrets + Azure Key Vault fallback)
-      - JWT_ISSUER=${JWT_ISSUER:-https://auth.conexaodesorte.com}
-      - JWT_JWKS_URI=${JWT_JWKS_URI:-https://auth.conexaodesorte.com/.well-known/jwks.json}
-
-      # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-jwt-issuer=${conexao-de-sorte-jwt-issuer:-https://auth.conexaodesorte.com}
-      - conexao-de-sorte-jwt-jwks-uri=${conexao-de-sorte-jwt-jwks-uri:-https://auth.conexaodesorte.com/.well-known/jwks.json}
-
-      # CORS Configuration (Docker Secrets + Azure Key Vault fallback)
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
-      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
-
-      # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-cors-allowed-origins=${conexao-de-sorte-cors-allowed-origins:-*}
-      - conexao-de-sorte-cors-allow-credentials=${conexao-de-sorte-cors-allow-credentials:-true}
-
-      # SSL Configuration (Docker Secrets + Azure Key Vault fallback)
-      - SSL_ENABLED=${SSL_ENABLED:-false}
-
-      # Fallback para Key Vault (compatibilidade)
-      - conexao-de-sorte-ssl-enabled=${conexao-de-sorte-ssl-enabled:-false}
-
-      # Logging
+      - SPRING_PROFILES_ACTIVE=prod
+      - SCHEDULER_LOG_LEVEL=INFO
       - LOGGING_LEVEL_ROOT=INFO
-      - LOGGING_LEVEL_COM_CONEXAODESORTE=DEBUG
-    # Conecta aos serviços da infraestrutura-core (externos)
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 10  # Limita a 10 tentativas de healthcheck
-      start_period: 60s
+    secrets:
+      - conexao-de-sorte-database-r2dbc-url
+      - conexao-de-sorte-database-username
+      - conexao-de-sorte-database-password
+      - conexao-de-sorte-redis-host
+      - conexao-de-sorte-redis-port
+      - conexao-de-sorte-redis-password
+      - conexao-de-sorte-redis-database
+      - conexao-de-sorte-jwt-issuer
+      - conexao-de-sorte-jwt-jwks-uri
+      - conexao-de-sorte-server-port
     networks:
       - conexao-network-swarm
     volumes:
       - scheduler-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       replicas: 1
       restart_policy:
@@ -140,3 +92,25 @@ networks:
 
 volumes:
   scheduler-logs:
+
+secrets:
+  conexao-de-sorte-database-r2dbc-url:
+    external: true
+  conexao-de-sorte-database-username:
+    external: true
+  conexao-de-sorte-database-password:
+    external: true
+  conexao-de-sorte-redis-host:
+    external: true
+  conexao-de-sorte-redis-port:
+    external: true
+  conexao-de-sorte-redis-password:
+    external: true
+  conexao-de-sorte-redis-database:
+    external: true
+  conexao-de-sorte-jwt-issuer:
+    external: true
+  conexao-de-sorte-jwt-jwks-uri:
+    external: true
+  conexao-de-sorte-server-port:
+    external: true

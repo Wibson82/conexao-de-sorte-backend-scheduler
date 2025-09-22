@@ -252,6 +252,48 @@ jobs:
           echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-jwt-secret }}"
           echo ::add-mask::"${{ steps.kv.outputs.conexao-de-sorte-jwt-signing-key }}"
 
+      - name: 🔐 Criar Docker Secrets from Azure Key Vault
+        run: |
+          set -euo pipefail
+          echo "🔐 Criando Docker Secrets a partir dos valores do Azure Key Vault..."
+
+          # Lista de secrets essenciais para injetar no Docker Swarm
+          secrets_list="conexao-de-sorte-database-r2dbc-url,conexao-de-sorte-database-username,conexao-de-sorte-database-password,conexao-de-sorte-redis-host,conexao-de-sorte-redis-port,conexao-de-sorte-redis-password,conexao-de-sorte-redis-database,conexao-de-sorte-jwt-issuer,conexao-de-sorte-jwt-jwks-uri,conexao-de-sorte-server-port"
+
+          IFS=',' read -ra SECRETS_ARRAY <<< "$secrets_list"
+          created_secrets=0
+
+          for secret_name in "${SECRETS_ARRAY[@]}"; do
+            # Converter nome do secret para variável de ambiente
+            var_name=$(echo "$secret_name" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            secret_value="${!var_name:-}"
+
+            if [[ -n "$secret_value" ]]; then
+              echo "🔐 Criando Docker Secret: $secret_name"
+
+              # Remover secret existente se houver
+              if docker secret inspect "$secret_name" >/dev/null 2>&1; then
+                echo "🗑️ Removendo secret existente: $secret_name"
+                docker secret rm "$secret_name" || true
+                sleep 1
+              fi
+
+              # Criar novo secret
+              echo -n "$secret_value" | docker secret create "$secret_name" -
+              echo "✅ Docker Secret criado: $secret_name"
+              ((created_secrets++))
+            else
+              echo "⚠️ Secret $secret_name não encontrado na variável $var_name"
+            fi
+          done
+
+          echo "✅ Total de Docker Secrets criados: $created_secrets/${#SECRETS_ARRAY[@]}"
+
+          if [[ $created_secrets -lt 5 ]]; then
+            echo "❌ Poucos secrets criados - deploy pode falhar"
+            exit 1
+          fi
+
       - name: 🌐 Preparar rede overlay compartilhada
         env:
           NETWORK_NAME: ${{ env.DOCKER_NETWORK_NAME }}
