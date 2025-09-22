@@ -19,7 +19,10 @@
 # ============================================================================
 
 # === ESTÁGIO 1: BUILD ===
-FROM maven:3.9.11-eclipse-temurin-25-alpine AS builder
+FROM amazoncorretto:25-alpine3.22 AS builder
+
+# Instalar Maven
+RUN apk add --no-cache maven
 
 # Metadados da imagem
 LABEL maintainer="Conexão de Sorte <tech@conexaodesorte.com>"
@@ -54,7 +57,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     -Dmaven.compiler.optimize=true
 
 # === ESTÁGIO 2: RUNTIME ===
-FROM eclipse-temurin:25-jre-alpine AS runtime
+FROM amazoncorretto:25-alpine3.22 AS runtime
 
 # Instalar dependências do sistema
 RUN apk add --no-cache \

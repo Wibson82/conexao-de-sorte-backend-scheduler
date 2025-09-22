@@ -42,7 +42,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '25'
-          distribution: 'liberica'
+          distribution: 'corretto'
 
       - name: Install dependencies
         run: |
