@@ -147,7 +147,7 @@ jobs:
           "
 
       - name: ✅ Confirmar consumo mínimo do Key Vault
-        if: ${{ steps.check_secrets.outputs.has_keyvault == 'true' }}
+        if: ${{ needs.validate-and-build.outputs.has_keyvault == 'true' }}
         run: |
           echo 'Job de validação não consome segredos do Key Vault (lista vazia).'
           echo "✅ Validação de Key Vault concluída sem consumo de segredos"
