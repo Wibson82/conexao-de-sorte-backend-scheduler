@@ -9,10 +9,18 @@ services:
       - SPRING_PROFILES_ACTIVE=prod
       - SCHEDULER_LOG_LEVEL=INFO
       - LOGGING_LEVEL_ROOT=INFO
+      # Database Configuration
+      - DATABASE_HOST=conexao-mysql
+      - DATABASE_PORT=3306
+      - DATABASE_NAME=conexao_de_sorte
+      - DATABASE_USERNAME=conexao
+      # Secrets via Docker Secrets
+      - DATABASE_PASSWORD_FILE=/run/secrets/DATABASE_PASSWORD
     secrets:
       - conexao-de-sorte-database-r2dbc-url
       - conexao-de-sorte-database-username
       - conexao-de-sorte-database-password
+      - DATABASE_PASSWORD
       - conexao-de-sorte-redis-host
       - conexao-de-sorte-redis-port
       - conexao-de-sorte-redis-password
@@ -114,3 +122,6 @@ secrets:
     external: true
   conexao-de-sorte-server-port:
     external: true
+  DATABASE_PASSWORD:
+    external: true
+    name: DATABASE_PASSWORD

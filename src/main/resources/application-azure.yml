@@ -80,7 +80,7 @@ conexao:
 
 # Server configuration for Azure production
 server:
-  port: ${conexao-de-sorte-server-port:8084}
+  port: ${SERVER_PORT:8084}
   shutdown: graceful
 
   # Enhanced security headers for production

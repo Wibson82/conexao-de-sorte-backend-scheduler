@@ -83,6 +83,10 @@ WORKDIR /app
 RUN mkdir -p /app/logs && \
     chown -R appuser:appgroup /app/logs
 
+# Copy custom entrypoint script
+COPY --chown=appuser:appgroup docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Copiar JAR da aplicação do estágio de build
 COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 
@@ -106,42 +110,14 @@ ENV CONEXAO_DE_SORTE_DATABASE_URL=${CONEXAO_DE_SORTE_DATABASE_URL} \
     CONEXAO_DE_SORTE_DATABASE_PASSWORD=${CONEXAO_DE_SORTE_DATABASE_PASSWORD} \
     CONEXAO_DE_SORTE_JWT_ISSUER=${CONEXAO_DE_SORTE_JWT_ISSUER} \
     CONEXAO_DE_SORTE_JWT_JWKS_URI=${CONEXAO_DE_SORTE_JWT_JWKS_URI}
-## JVM otimizada para containers: flags removidas para compatibilidade total com Java 25 LTS
-# As flags e perfis devem ser definidos externamente via workflow/deploy
 
 # Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
 # Definir perfil padrão para container
 ENV SPRING_PROFILES_ACTIVE=container
 
-# Expor porta da aplicação
-
-
 # Health check nativo
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=10 \
   CMD curl -f http://localhost:8084/actuator/health || exit 1
-
-# Script de entrada que executa inicialização do DB e depois a aplicação
-RUN printf '%s\n' '#!/bin/sh' \
-    'set -e' \
-    'echo "🚀 Iniciando container scheduler..."' \
-    '' \
-    '# Executar inicialização do database' \
-    'if [ -f /app/init-database.sh ]; then' \
-    '    echo "🗄️ Executando inicialização do database..."' \
-    '    /app/init-database.sh' \
-    'else' \
-    '    echo "⚠️ Script de inicialização não encontrado, prosseguindo..."' \
-    'fi' \
-    '' \
-    '# Iniciar aplicação Java' \
-    'echo "☕ Iniciando aplicação Java..."' \
-    'exec dumb-init -- java -jar /app/app.jar' \
-    > /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh && \
-    chown appuser:appgroup /app/entrypoint.sh
-
-# Mudar para usuário não-root
-USER appuser:appgroup
 
 # Labels para metadata
 LABEL org.opencontainers.image.title="Conexão de Sorte - Scheduler"
@@ -154,7 +130,12 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.url="https://conexaodesorte.com"
 LABEL org.opencontainers.image.source="https://github.com/conexaodesorte/autenticacao"
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Mudar para usuário não-root
+USER appuser:appgroup
+
+# Start the application with custom entrypoint
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["java", "-jar", "app.jar"]
 
 # === ESTÁGIO 3: DEBUG (Opcional) ===
 FROM runtime AS debug
@@ -165,8 +146,6 @@ ENV JAVA_OPTS="$JAVA_OPTS \
     -Dspring.profiles.active=dev \
     -Dlogging.level.br.tec.facilitaservicos=DEBUG"
 
-# Expor porta de debug
-
-
 # Comando para debug com retry
-ENTRYPOINT ["/app/docker-entrypoint.sh", "debug"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["java", "-jar", "app.jar"]
