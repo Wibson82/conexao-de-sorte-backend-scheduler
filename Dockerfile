@@ -64,6 +64,8 @@ RUN apk add --no-cache \
     tzdata \
     curl \
     dumb-init \
+    mysql-client \
+    netcat-openbsd \
     && rm -rf /var/cache/apk/*
 
 # Configurar timezone
@@ -83,6 +85,10 @@ RUN mkdir -p /app/logs && \
 
 # Copiar JAR da aplicação do estágio de build
 COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
+
+# Copiar script de inicialização do database
+COPY --chown=appuser:appgroup scripts/init-database.sh /app/init-database.sh
+RUN chmod +x /app/init-database.sh
 
 # Build-time args → ENV
 ARG CONEXAO_DE_SORTE_DATABASE_URL
@@ -114,9 +120,25 @@ ENV SPRING_PROFILES_ACTIVE=container
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=10 \
   CMD curl -f http://localhost:8084/actuator/health || exit 1
 
-# Copiar script de entrada robusto com retry e healthcheck
-COPY --chown=appuser:appgroup docker/healthcheck-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+# Script de entrada que executa inicialização do DB e depois a aplicação
+RUN printf '%s\n' '#!/bin/sh' \
+    'set -e' \
+    'echo "🚀 Iniciando container scheduler..."' \
+    '' \
+    '# Executar inicialização do database' \
+    'if [ -f /app/init-database.sh ]; then' \
+    '    echo "🗄️ Executando inicialização do database..."' \
+    '    /app/init-database.sh' \
+    'else' \
+    '    echo "⚠️ Script de inicialização não encontrado, prosseguindo..."' \
+    'fi' \
+    '' \
+    '# Iniciar aplicação Java' \
+    'echo "☕ Iniciando aplicação Java..."' \
+    'exec dumb-init -- java -jar /app/app.jar' \
+    > /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    chown appuser:appgroup /app/entrypoint.sh
 
 # Mudar para usuário não-root
 USER appuser:appgroup
@@ -132,8 +154,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.url="https://conexaodesorte.com"
 LABEL org.opencontainers.image.source="https://github.com/conexaodesorte/autenticacao"
 
-# Comando de inicialização com pré-checagem de DB e retry
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 # === ESTÁGIO 3: DEBUG (Opcional) ===
 FROM runtime AS debug
