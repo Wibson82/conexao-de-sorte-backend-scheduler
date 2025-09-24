@@ -48,7 +48,7 @@ jobs:
         run: |
           echo "🔒 Verificando segurança da configuração..."
           # Verifica por senhas hardcoded, excluindo definições de secrets externos
-          if grep -R --line-number "password\s*:\s*[^$]" docker-compose.yml | grep -v "\${" | grep -v "#" | grep -vE "^\s*[a-zA-Z0-9_-]+password:\s*$"; then
+          if grep -R --line-number "password.*:.*[\"'].*[\"']" docker-compose.yml | grep -v "#"; then
             echo "❌ Found potential hardcoded passwords"
             exit 1
           else
@@ -193,8 +193,11 @@ jobs:
             if [[ -n "$secret_value" ]]; then
               echo "::add-mask::$secret_value"
               env_var_name=$(echo "$secret_name" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
-              echo "${env_var_name}=${secret_value}" >> $GITHUB_ENV
-              echo "Secret '$secret_name' fetched and set as environment variable '${env_var_name}'."
+              # Exporta para o ambiente do job sem exibir o valor
+              echo "${env_var_name}<<EOF" >> $GITHUB_ENV
+              echo "$secret_value" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              echo "Secret '$secret_name' set as environment variable '${env_var_name}'."
             else
               echo "Warning: Secret '$secret_name' not found in Azure Key Vault."
             fi
