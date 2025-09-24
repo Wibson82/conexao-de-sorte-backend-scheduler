@@ -345,8 +345,21 @@ jobs:
           fi
           echo "✅ Todos os segredos necessários estão configurados"
           export COMPOSE_PROJECT_NAME="${STACK_NAME}"
-          echo "📥 Fazendo pull da imagem mais recente..."
-          docker pull ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest || echo "⚠️ Falha no pull - usando imagem local"
+          # Tentar pull da imagem mais recente
+          echo "📥 Tentando pull da imagem mais recente..."
+          if docker pull ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest; then
+            echo "✅ Pull da imagem realizado com sucesso"
+          else
+            echo "⚠️ Falha no pull - tentando build local..."
+            if [[ -f "Dockerfile" ]]; then
+              echo "🔨 Fazendo build da imagem localmente..."
+              docker build -t ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest .
+              echo "✅ Build local concluído"
+            else
+              echo "❌ Dockerfile não encontrado - não é possível fazer build"
+              exit 1
+            fi
+          fi
           echo "🔄 Executando deploy stack..."
           docker stack deploy -c docker-compose.yml "${STACK_NAME}"
           echo "✅ Deploy executado com sucesso"
