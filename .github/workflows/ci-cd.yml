@@ -560,13 +560,26 @@ jobs:
           echo "❌ Timeout: Scheduler não está healthy após ${timeout}s"
           echo "📋 Listando containers atuais:"
           docker ps --filter "name=conexao-scheduler" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-          # Exibe logs do container mais recente
+
+          # Debugging aprimorado - mostrar logs detalhados
+          echo "🔍 Logs do container mais recente para debug:"
           last_container=$(docker ps -a --filter "name=conexao-scheduler" --format "{{.ID}}" | head -1)
           if [[ -n "$last_container" ]]; then
-            echo "--- Últimos logs do container $last_container ---"
-            docker logs --tail 50 "$last_container" || true
+            echo "--- 📋 Informações do container $last_container ---"
+            docker inspect --format='{{.State.Status}} - {{.State.Error}}' "$last_container" || true
+            echo "--- 🔍 Logs do container $last_container ---"
+            docker logs --tail 100 "$last_container" || true
             echo "----------------------------------------------"
           fi
+
+          # Verificar serviços do stack
+          echo "🔍 Status dos serviços do stack:"
+          docker service ls --filter name="conexao-scheduler" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}" || true
+
+          # Verificar tarefas com falhas
+          echo "🔍 Tarefas com problemas:"
+          docker service ps conexao-scheduler_scheduler --no-trunc --format "table {{.Name}}\t{{.CurrentState}}\t{{.Error}}" 2>/dev/null || true
+
           exit 1
 
   cleanup-artifacts:
