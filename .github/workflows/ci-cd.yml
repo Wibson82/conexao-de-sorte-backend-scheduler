@@ -38,7 +38,6 @@ jobs:
         with:
           fetch-depth: 1
 
-
       - name: Validate Docker Compose
         run: |
           docker compose -f docker-compose.yml config -q
@@ -47,12 +46,11 @@ jobs:
       - name: Security Validation
         run: |
           echo "🔒 Verificando segurança da configuração..."
-          # Só acusa erro se encontrar password: com valor literal (não variável)
-          if grep -E '^\s*password\s*:\s*[^ $\{]' docker-compose.yml | grep -v '#' | grep -v 'external:'; then
-            echo "❌ Encontrada(s) senha(s) hardcoded literal em docker-compose.yml"
+          if grep -R --line-number "password\s*:\s*" docker-compose.yml | grep -v "\${" | grep -v "#" | grep -v "external:"; then
+            echo "❌ Found potential hardcoded passwords"
             exit 1
           else
-            echo "✅ Nenhuma senha hardcoded literal encontrada"
+            echo "✅ No hardcoded passwords found"
           fi
 
       - name: 🔎 Validar OIDC Azure
@@ -95,37 +93,9 @@ jobs:
 
           echo "has_azure_creds=true" >> "$GITHUB_OUTPUT"
 
-      # Upload artifacts removido para evitar storage quota
-
-      - name: 🔐 Setup Docker Registry Authentication
-        run: |
-          echo "🔐 Login no GitHub Container Registry..."
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          echo "✅ Login realizado com sucesso"
-
-      - name: 🏗️ Build Docker Image
-        run: |
-          echo "🏗️ Construindo imagem Docker..."
-          docker build \
-            --tag ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest \
-            --tag ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:${{ github.sha }} \
-            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
-            --build-arg VCS_REF=${{ github.sha }} \
-            --build-arg VERSION=1.0.0 \
-            .
-          echo "✅ Imagem construída com sucesso"
-
-      - name: 📤 Push Docker Image
-        run: |
-          echo "📤 Fazendo push da imagem para GHCR..."
-          docker push ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest
-          docker push ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:${{ github.sha }}
-          echo "✅ Push realizado com sucesso"
-          echo "🎯 Imagem disponível em: ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest"
-
       - name: Validation completed
         run: |
-          echo "✅ Validação concluída - imagem construída e disponível para deploy"
+          echo "✅ Validação concluída - pronto para deploy"
 
   deploy-selfhosted:
     needs: validate-and-build
