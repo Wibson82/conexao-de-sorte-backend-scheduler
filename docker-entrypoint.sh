@@ -58,6 +58,32 @@ if [[ "$(id -u)" -eq 0 ]]; then
     warning "Executando como root - isso pode ser inseguro em produção"
 fi
 
+# Função para ler secrets de arquivos
+read_secret() {
+    local secret_name="$1"
+    local secret_file="/run/secrets/$secret_name"
+
+    if [[ -f "$secret_file" ]]; then
+        cat "$secret_file"
+    else
+        echo ""
+    fi
+}
+
+# Ler secrets dos arquivos Docker
+export CONEXAO_DE_SORTE_DATABASE_R2DBC_URL=$(read_secret "DATABASE_R2DBC_URL")
+export CONEXAO_DE_SORTE_DATABASE_USERNAME=$(read_secret "DATABASE_USERNAME")
+export CONEXAO_DE_SORTE_DATABASE_PASSWORD=$(read_secret "DATABASE_PASSWORD")
+export CONEXAO_DE_SORTE_REDIS_HOST=$(read_secret "REDIS_HOST")
+export CONEXAO_DE_SORTE_REDIS_PORT=$(read_secret "REDIS_PORT")
+export CONEXAO_DE_SORTE_REDIS_PASSWORD=$(read_secret "REDIS_PASSWORD")
+export CONEXAO_DE_SORTE_SERVER_PORT=$(read_secret "SERVER_PORT")
+export CONEXAO_DE_SORTE_JWT_ISSUER=$(read_secret "JWT_ISSUER")
+
+# Definir valores padrão para variáveis de host/porta se não estiverem nos secrets
+export CONEXAO_DE_SORTE_DATABASE_HOST="${CONEXAO_DE_SORTE_DATABASE_HOST:-conexao-mysql}"
+export CONEXAO_DE_SORTE_DATABASE_PORT="${CONEXAO_DE_SORTE_DATABASE_PORT:-3306}"
+
 # Variáveis obrigatórias específicas do Scheduler
 required_vars=(
     "CONEXAO_DE_SORTE_DATABASE_R2DBC_URL"

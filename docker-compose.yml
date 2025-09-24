@@ -16,6 +16,9 @@ services:
       - DATABASE_USERNAME=conexao
       # Secrets via Docker Secrets
       - DATABASE_PASSWORD_FILE=/run/secrets/DATABASE_PASSWORD
+      # Host/Port defaults for entrypoint script
+      - CONEXAO_DE_SORTE_DATABASE_HOST=conexao-mysql
+      - CONEXAO_DE_SORTE_DATABASE_PORT=3306
     secrets:
       - DATABASE_R2DBC_URL
       - DATABASE_USERNAME
