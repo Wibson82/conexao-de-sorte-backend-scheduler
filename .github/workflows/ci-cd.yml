@@ -168,22 +168,46 @@ jobs:
         if: ${{ env.CONEXAO_DE_SORTE_ENCRYPTION_MASTER_KEY != '' && env.CONEXAO_DE_SORTE_REDIS_PASSWORD != '' && env.CONEXAO_DE_SORTE_JWT_SECRET != '' }}
         run: |
           echo "Creating Docker secrets..."
-          if docker secret ls --format "{{.Name}}" | grep -q "^ENCRYPTION_MASTER_KEY$"; then
-            echo "⚠️ Secret ENCRYPTION_MASTER_KEY já existe - removendo serviços dependentes primeiro..."
+
+          # Função para criar secret apenas se não existir
+          create_secret_if_not_exists() {
+            local secret_name="$1"
+            local secret_value="$2"
+
+            if docker secret ls --format "{{.Name}}" | grep -q "^${secret_name}$"; then
+              echo "ℹ️ Secret ${secret_name} já existe - reutilizando"
+            else
+              printf "$secret_value" | docker secret create "$secret_name" -
+              echo "✅ Secret ${secret_name} criado"
+            fi
+          }
+
+          # Remover apenas serviços específicos do scheduler se necessário
+          if docker service ls --filter name="conexao-scheduler" --format "{{.Name}}" | grep -q "conexao-scheduler"; then
+            echo "⚠️ Removendo serviços do scheduler para atualização..."
             docker service ls --filter name="conexao-scheduler" --format "{{.Name}}" | xargs -r docker service rm || true
             sleep 5
-            docker secret rm ENCRYPTION_MASTER_KEY || true
           fi
-          if docker secret ls --format "{{.Name}}" | grep -q "^REDIS_PASSWORD$"; then
-            docker secret rm REDIS_PASSWORD || true
-          fi
-          if docker secret ls --format "{{.Name}}" | grep -q "^JWT_SECRET$"; then
-            docker secret rm JWT_SECRET || true
-          fi
-          printf "$CONEXAO_DE_SORTE_ENCRYPTION_MASTER_KEY" | docker secret create ENCRYPTION_MASTER_KEY -
-          printf "$CONEXAO_DE_SORTE_REDIS_PASSWORD" | docker secret create REDIS_PASSWORD -
-          printf "$CONEXAO_DE_SORTE_JWT_SECRET" | docker secret create JWT_SECRET -
-          echo "Docker secrets created."
+
+          # Criar secrets apenas se não existirem (evita conflitos com outros serviços)
+          create_secret_if_not_exists "DATABASE_R2DBC_URL" "$CONEXAO_DE_SORTE_DATABASE_R2DBC_URL"
+          create_secret_if_not_exists "DATABASE_USERNAME" "$CONEXAO_DE_SORTE_DATABASE_USERNAME"
+          create_secret_if_not_exists "DATABASE_PASSWORD" "$CONEXAO_DE_SORTE_DATABASE_PASSWORD"
+          create_secret_if_not_exists "REDIS_HOST" "$CONEXAO_DE_SORTE_REDIS_HOST"
+          create_secret_if_not_exists "REDIS_PORT" "$CONEXAO_DE_SORTE_REDIS_PORT"
+          create_secret_if_not_exists "REDIS_PASSWORD" "$CONEXAO_DE_SORTE_REDIS_PASSWORD"
+          create_secret_if_not_exists "REDIS_DATABASE" "$CONEXAO_DE_SORTE_REDIS_DATABASE"
+          create_secret_if_not_exists "JWT_SECRET" "$CONEXAO_DE_SORTE_JWT_SECRET"
+          create_secret_if_not_exists "JWT_ISSUER" "$CONEXAO_DE_SORTE_JWT_ISSUER"
+          create_secret_if_not_exists "JWT_JWKS_URI" "$CONEXAO_DE_SORTE_JWT_JWKS_URI"
+          create_secret_if_not_exists "JWT_SIGNING_KEY" "$CONEXAO_DE_SORTE_JWT_SIGNING_KEY"
+          create_secret_if_not_exists "JWT_VERIFICATION_KEY" "$CONEXAO_DE_SORTE_JWT_VERIFICATION_KEY"
+          create_secret_if_not_exists "SERVER_PORT" "$CONEXAO_DE_SORTE_SERVER_PORT"
+          create_secret_if_not_exists "CORS_ALLOWED_ORIGINS" "$CONEXAO_DE_SORTE_CORS_ALLOWED_ORIGINS"
+          create_secret_if_not_exists "CORS_ALLOW_CREDENTIALS" "$CONEXAO_DE_SORTE_CORS_ALLOW_CREDENTIALS"
+          create_secret_if_not_exists "ENCRYPTION_MASTER_KEY" "$CONEXAO_DE_SORTE_ENCRYPTION_MASTER_KEY"
+
+          echo "Docker secrets process completed."
 
       - name: 🔍 Preparar ambiente de deploy
         run: |
