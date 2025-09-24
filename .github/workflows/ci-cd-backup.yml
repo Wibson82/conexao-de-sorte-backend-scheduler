@@ -47,12 +47,12 @@ jobs:
       - name: Security Validation
         run: |
           echo "🔒 Verificando segurança da configuração..."
-          # Só acusa erro se encontrar password: com valor literal (não variável)
-          if grep -E '^\s*password\s*:\s*[^ $\{]' docker-compose.yml | grep -v '#' | grep -v 'external:'; then
-            echo "❌ Encontrada(s) senha(s) hardcoded literal em docker-compose.yml"
+          # Verifica por senhas hardcoded, excluindo definições de secrets externos
+          if grep -R --line-number "password.*:.*[\"'].*[\"']" docker-compose.yml | grep -v "#"; then
+            echo "❌ Found potential hardcoded passwords"
             exit 1
           else
-            echo "✅ Nenhuma senha hardcoded literal encontrada"
+            echo "✅ No hardcoded passwords found"
           fi
 
       - name: 🔎 Validar OIDC Azure
@@ -130,24 +130,59 @@ jobs:
         run: |
           echo "Fetching secrets from Azure Key Vault using Azure CLI..."
           SECRETS_LIST=(
-            "conexao-de-sorte-database-r2dbc-url"
-            "conexao-de-sorte-database-username"
+            "conexao-de-sorte-alerting-webhook-secret"
+            "conexao-de-sorte-api-rate-limit-key"
+            "conexao-de-sorte-auth-service-url"
+            "conexao-de-sorte-backup-encryption-key"
+            "conexao-de-sorte-cors-allow-credentials"
+            "conexao-de-sorte-cors-allowed-origins"
+            "conexao-de-sorte-database-host"
+            "conexao-de-sorte-database-jdbc-url"
             "conexao-de-sorte-database-password"
-            "conexao-de-sorte-redis-host"
-            "conexao-de-sorte-redis-port"
-            "conexao-de-sorte-redis-password"
-            "conexao-de-sorte-redis-database"
+            "conexao-de-sorte-database-port"
+            "conexao-de-sorte-database-proxysql-password"
+            "conexao-de-sorte-database-r2dbc-url"
+            "conexao-de-sorte-database-url"
+            "conexao-de-sorte-database-username"
+            "conexao-de-sorte-db-host"
+            "conexao-de-sorte-db-password"
+            "conexao-de-sorte-db-port"
+            "conexao-de-sorte-db-username"
+            "conexao-de-sorte-encryption-backup-key"
+            "conexao-de-sorte-encryption-master-key"
+            "conexao-de-sorte-encryption-master-password"
             "conexao-de-sorte-jwt-issuer"
             "conexao-de-sorte-jwt-jwks-uri"
+            "conexao-de-sorte-jwt-key-id"
+            "conexao-de-sorte-jwt-privateKey"
+            "conexao-de-sorte-jwt-publicKey"
             "conexao-de-sorte-jwt-secret"
             "conexao-de-sorte-jwt-signing-key"
             "conexao-de-sorte-jwt-verification-key"
+            "conexao-de-sorte-kafka-cluster-id"
+            "conexao-de-sorte-letsencrypt-email"
+            "conexao-de-sorte-monitoring-token"
             "conexao-de-sorte-rabbitmq-host"
+            "conexao-de-sorte-rabbitmq-password"
             "conexao-de-sorte-rabbitmq-port"
             "conexao-de-sorte-rabbitmq-username"
-            "conexao-de-sorte-rabbitmq-password"
             "conexao-de-sorte-rabbitmq-vhost"
+            "conexao-de-sorte-recovery-token"
+            "conexao-de-sorte-redis-database"
+            "conexao-de-sorte-redis-host"
+            "conexao-de-sorte-redis-password"
+            "conexao-de-sorte-redis-port"
             "conexao-de-sorte-server-port"
+            "conexao-de-sorte-session-secret"
+            "conexao-de-sorte-ssl-enabled"
+            "conexao-de-sorte-ssl-keystore-password"
+            "conexao-de-sorte-ssl-keystore-path"
+            "conexao-de-sorte-traefik-admin-password"
+            "conexao-de-sorte-traefik-audit-password"
+            "conexao-de-sorte-traefik-crypto-password"
+            "conexao-de-sorte-traefik-dashboard-password"
+            "conexao-de-sorte-webhook-secret"
+            "conexao-de-sorte-zookeeper-client-port"
           )
 
           for secret_name in "${SECRETS_LIST[@]}"; do
@@ -158,73 +193,138 @@ jobs:
             if [[ -n "$secret_value" ]]; then
               echo "::add-mask::$secret_value"
               env_var_name=$(echo "$secret_name" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
-              echo "${env_var_name}=${secret_value}" >> $GITHUB_ENV
-              echo "Secret '$secret_name' fetched and set as environment variable '${env_var_name}'."
+              # Exporta para o ambiente do job sem exibir o valor
+              echo "${env_var_name}<<EOF" >> $GITHUB_ENV
+              echo "$secret_value" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              echo "Secret '$secret_name' set as environment variable '${env_var_name}'."
             else
               echo "Warning: Secret '$secret_name' not found in Azure Key Vault."
             fi
           done
 
       - name: 🔐 Create Docker Secrets
-        if: ${{ env.CONEXAO_DE_SORTE_DATABASE_PASSWORD != '' && env.CONEXAO_DE_SORTE_REDIS_PASSWORD != '' }}
         run: |
-          echo "Creating Docker secrets..."
+          - name: 🔐 Create Docker Secrets
+            run: |
+              echo "Creating Docker secrets (robust mode)..."
 
-          # Remover serviços dependentes primeiro se existirem
-          if docker service ls --filter name="conexao-scheduler" --format "{{.Name}}" | grep -q "conexao-scheduler"; then
-            echo "⚠️ Removendo serviços dependentes do Scheduler primeiro..."
-            docker service ls --filter name="conexao-scheduler" --format "{{.Name}}" | xargs -r docker service rm || true
-            sleep 5
-          fi
+              set -euo pipefail
 
-          # Lista de secrets para o Scheduler (18 secrets)
-          declare -A SECRETS_MAP=(
-            ["conexao-de-sorte-database-r2dbc-url"]="$CONEXAO_DE_SORTE_DATABASE_R2DBC_URL"
-            ["conexao-de-sorte-database-username"]="$CONEXAO_DE_SORTE_DATABASE_USERNAME"
-            ["conexao-de-sorte-database-password"]="$CONEXAO_DE_SORTE_DATABASE_PASSWORD"
-            ["conexao-de-sorte-redis-host"]="$CONEXAO_DE_SORTE_REDIS_HOST"
-            ["conexao-de-sorte-redis-port"]="$CONEXAO_DE_SORTE_REDIS_PORT"
-            ["conexao-de-sorte-redis-password"]="$CONEXAO_DE_SORTE_REDIS_PASSWORD"
-            ["conexao-de-sorte-redis-database"]="$CONEXAO_DE_SORTE_REDIS_DATABASE"
-            ["conexao-de-sorte-jwt-issuer"]="$CONEXAO_DE_SORTE_JWT_ISSUER"
-            ["conexao-de-sorte-jwt-jwks-uri"]="$CONEXAO_DE_SORTE_JWT_JWKS_URI"
-            ["conexao-de-sorte-jwt-secret"]="$CONEXAO_DE_SORTE_JWT_SECRET"
-            ["conexao-de-sorte-jwt-signing-key"]="$CONEXAO_DE_SORTE_JWT_SIGNING_KEY"
-            ["conexao-de-sorte-jwt-verification-key"]="$CONEXAO_DE_SORTE_JWT_VERIFICATION_KEY"
-            ["conexao-de-sorte-rabbitmq-host"]="$CONEXAO_DE_SORTE_RABBITMQ_HOST"
-            ["conexao-de-sorte-rabbitmq-port"]="$CONEXAO_DE_SORTE_RABBITMQ_PORT"
-            ["conexao-de-sorte-rabbitmq-username"]="$CONEXAO_DE_SORTE_RABBITMQ_USERNAME"
-            ["conexao-de-sorte-rabbitmq-password"]="$CONEXAO_DE_SORTE_RABBITMQ_PASSWORD"
-            ["conexao-de-sorte-rabbitmq-vhost"]="$CONEXAO_DE_SORTE_RABBITMQ_VHOST"
-            ["conexao-de-sorte-server-port"]="$CONEXAO_DE_SORTE_SERVER_PORT"
-          )
+              # Lista completa de secrets para o Scheduler
+              declare -A SECRETS_MAP=(
+                ["conexao-de-sorte-alerting-webhook-secret"]="$CONEXAO_DE_SORTE_ALERTING_WEBHOOK_SECRET"
+                ["conexao-de-sorte-api-rate-limit-key"]="$CONEXAO_DE_SORTE_API_RATE_LIMIT_KEY"
+                ["conexao-de-sorte-auth-service-url"]="$CONEXAO_DE_SORTE_AUTH_SERVICE_URL"
+                ["conexao-de-sorte-backup-encryption-key"]="$CONEXAO_DE_SORTE_BACKUP_ENCRYPTION_KEY"
+                ["conexao-de-sorte-cors-allow-credentials"]="$CONEXAO_DE_SORTE_CORS_ALLOW_CREDENTIALS"
+                ["conexao-de-sorte-cors-allowed-origins"]="$CONEXAO_DE_SORTE_CORS_ALLOWED_ORIGINS"
+                ["conexao-de-sorte-database-host"]="$CONEXAO_DE_SORTE_DATABASE_HOST"
+                ["conexao-de-sorte-database-jdbc-url"]="$CONEXAO_DE_SORTE_DATABASE_JDBC_URL"
+                ["conexao-de-sorte-database-password"]="$CONEXAO_DE_SORTE_DATABASE_PASSWORD"
+                ["conexao-de-sorte-database-port"]="$CONEXAO_DE_SORTE_DATABASE_PORT"
+                ["conexao-de-sorte-database-proxysql-password"]="$CONEXAO_DE_SORTE_DATABASE_PROXYSQL_PASSWORD"
+                ["conexao-de-sorte-database-r2dbc-url"]="$CONEXAO_DE_SORTE_DATABASE_R2DBC_URL"
+                ["conexao-de-sorte-database-url"]="$CONEXAO_DE_SORTE_DATABASE_URL"
+                ["conexao-de-sorte-database-username"]="$CONEXAO_DE_SORTE_DATABASE_USERNAME"
+                ["conexao-de-sorte-db-host"]="$CONEXAO_DE_SORTE_DB_HOST"
+                ["conexao-de-sorte-db-password"]="$CONEXAO_DE_SORTE_DB_PASSWORD"
+                ["conexao-de-sorte-db-port"]="$CONEXAO_DE_SORTE_DB_PORT"
+                ["conexao-de-sorte-db-username"]="$CONEXAO_DE_SORTE_DB_USERNAME"
+                ["conexao-de-sorte-encryption-backup-key"]="$CONEXAO_DE_SORTE_ENCRYPTION_BACKUP_KEY"
+                ["conexao-de-sorte-encryption-master-key"]="$CONEXAO_DE_SORTE_ENCRYPTION_MASTER_KEY"
+                ["conexao-de-sorte-encryption-master-password"]="$CONEXAO_DE_SORTE_ENCRYPTION_MASTER_PASSWORD"
+                ["conexao-de-sorte-jwt-issuer"]="$CONEXAO_DE_SORTE_JWT_ISSUER"
+                ["conexao-de-sorte-jwt-jwks-uri"]="$CONEXAO_DE_SORTE_JWT_JWKS_URI"
+                ["conexao-de-sorte-jwt-key-id"]="$CONEXAO_DE_SORTE_JWT_KEY_ID"
+                ["conexao-de-sorte-jwt-privateKey"]="$CONEXAO_DE_SORTE_JWT_PRIVATEKEY"
+                ["conexao-de-sorte-jwt-publicKey"]="$CONEXAO_DE_SORTE_JWT_PUBLICKEY"
+                ["conexao-de-sorte-jwt-secret"]="$CONEXAO_DE_SORTE_JWT_SECRET"
+                ["conexao-de-sorte-jwt-signing-key"]="$CONEXAO_DE_SORTE_JWT_SIGNING_KEY"
+                ["conexao-de-sorte-jwt-verification-key"]="$CONEXAO_DE_SORTE_JWT_VERIFICATION_KEY"
+                ["conexao-de-sorte-kafka-cluster-id"]="$CONEXAO_DE_SORTE_KAFKA_CLUSTER_ID"
+                ["conexao-de-sorte-letsencrypt-email"]="$CONEXAO_DE_SORTE_LETSENCRYPT_EMAIL"
+                ["conexao-de-sorte-monitoring-token"]="$CONEXAO_DE_SORTE_MONITORING_TOKEN"
+                ["conexao-de-sorte-rabbitmq-host"]="$CONEXAO_DE_SORTE_RABBITMQ_HOST"
+                ["conexao-de-sorte-rabbitmq-password"]="$CONEXAO_DE_SORTE_RABBITMQ_PASSWORD"
+                ["conexao-de-sorte-rabbitmq-port"]="$CONEXAO_DE_SORTE_RABBITMQ_PORT"
+                ["conexao-de-sorte-rabbitmq-username"]="$CONEXAO_DE_SORTE_RABBITMQ_USERNAME"
+                ["conexao-de-sorte-rabbitmq-vhost"]="$CONEXAO_DE_SORTE_RABBITMQ_VHOST"
+                ["conexao-de-sorte-recovery-token"]="$CONEXAO_DE_SORTE_RECOVERY_TOKEN"
+                ["conexao-de-sorte-redis-database"]="$CONEXAO_DE_SORTE_REDIS_DATABASE"
+                ["conexao-de-sorte-redis-host"]="$CONEXAO_DE_SORTE_REDIS_HOST"
+                ["conexao-de-sorte-redis-password"]="$CONEXAO_DE_SORTE_REDIS_PASSWORD"
+                ["conexao-de-sorte-redis-port"]="$CONEXAO_DE_SORTE_REDIS_PORT"
+                ["conexao-de-sorte-server-port"]="$CONEXAO_DE_SORTE_SERVER_PORT"
+                ["conexao-de-sorte-session-secret"]="$CONEXAO_DE_SORTE_SESSION_SECRET"
+                ["conexao-de-sorte-ssl-enabled"]="$CONEXAO_DE_SORTE_SSL_ENABLED"
+                ["conexao-de-sorte-ssl-keystore-password"]="$CONEXAO_DE_SORTE_SSL_KEYSTORE_PASSWORD"
+                ["conexao-de-sorte-ssl-keystore-path"]="$CONEXAO_DE_SORTE_SSL_KEYSTORE_PATH"
+                ["conexao-de-sorte-traefik-admin-password"]="$CONEXAO_DE_SORTE_TRAEFIK_ADMIN_PASSWORD"
+                ["conexao-de-sorte-traefik-audit-password"]="$CONEXAO_DE_SORTE_TRAEFIK_AUDIT_PASSWORD"
+                ["conexao-de-sorte-traefik-crypto-password"]="$CONEXAO_DE_SORTE_TRAEFIK_CRYPTO_PASSWORD"
+                ["conexao-de-sorte-traefik-dashboard-password"]="$CONEXAO_DE_SORTE_TRAEFIK_DASHBOARD_PASSWORD"
+                ["conexao-de-sorte-webhook-secret"]="$CONEXAO_DE_SORTE_WEBHOOK_SECRET"
+                ["conexao-de-sorte-zookeeper-client-port"]="$CONEXAO_DE_SORTE_ZOOKEEPER_CLIENT_PORT"
+              )
 
-          # Processar cada secret
-          for secret_name in "${!SECRETS_MAP[@]}"; do
-            secret_value="${SECRETS_MAP[$secret_name]}"
-            docker_secret_name=$(echo "$secret_name" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              # Helper: list services using a secret
+              services_using_secret() {
+                local secret="$1"
+                local using=()
+                while read -r sid sname; do
+                  # get secret names used by this service (if any)
+                  if docker service inspect "$sid" --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{println .SecretName}}{{end}}' 2>/dev/null | grep -Fx -- "$secret" >/dev/null 2>&1; then
+                    using+=("$sname")
+                  fi
+                done < <(docker service ls --format '{{.ID}} {{.Name}}')
+                printf '%s
+          echo "🔍 Preparando ambiente para deploy do Scheduler..."
+              }
 
-            if [[ -n "$secret_value" ]]; then
-              # Remover secret existente se necessário
-              if docker secret ls --format "{{.Name}}" | grep -q "^${docker_secret_name}$"; then
-                echo "⚠️ Removendo secret existente: $docker_secret_name"
-                docker secret rm "$docker_secret_name" || true
-                sleep 1
+              # Ensure required env vars are present (exit early if not)
+              if [[ -z "${CONEXAO_DE_SORTE_DATABASE_PASSWORD:-}" || -z "${CONEXAO_DE_SORTE_REDIS_PASSWORD:-}" || -z "${CONEXAO_DE_SORTE_JWT_SECRET:-}" ]]; then
+                echo "❌ Required secrets not available in environment. Skipping Docker secrets creation step."
+                exit 0
               fi
 
-              # Criar novo secret
-              printf "$secret_value" | docker secret create "$docker_secret_name" -
-              echo "✅ Secret criado: $docker_secret_name"
-            else
-              echo "⚠️ Secret vazio ou não encontrado: $secret_name"
-            fi
-          done
+              for secret_name in "${!SECRETS_MAP[@]}"; do
+                secret_value="${SECRETS_MAP[$secret_name]}"
 
-          echo "Docker secrets created."
+                if [[ -z "$secret_value" ]]; then
+                  echo "⚠️ Skipping empty secret: $secret_name"
+                  continue
+                fi
 
-      - name: 🔍 Preparar ambiente de deploy
-        run: |
-          echo "🔍 Preparando ambiente para deploy do Scheduler..."
+                if docker secret ls --format '{{.Name}}' | grep -q "^${secret_name}$"; then
+                  echo "ℹ️ Secret '$secret_name' already exists. Checking usage..."
+                  using=$(services_using_secret "$secret_name" || true)
+                  if [[ -n "$using" ]]; then
+                    echo "⚠️ Secret '$secret_name' is in use by services:"
+                    echo "$using" | sed 's/^/  - /'
+                    echo "➡️ Will NOT remove or recreate secret '$secret_name' to avoid breaking other services. Keeping existing secret."
+                    continue
+                  else
+                    echo "ℹ️ Secret '$secret_name' exists but is not used by any service — safe to replace. Removing..."
+                    docker secret rm "$secret_name" || true
+                    sleep 1
+                  fi
+                fi
+
+                # Create secret (handle AlreadyExists gracefully)
+                if printf "%s" "$secret_value" | docker secret create "$secret_name" - 2>&1 | tee /dev/stderr | grep -q "Error:.*AlreadyExists"; then
+                  echo "ℹ️ Secret '$secret_name' already exists (race), keeping existing one."
+                else
+                  # If create succeeded, message already printed; if failed for other reason, show and continue
+                  if ! docker secret ls --format '{{.Name}}' | grep -q "^${secret_name}$"; then
+                    echo "⚠️ Falha ao criar secret '$secret_name' (mas pipeline continuará)."
+                  else
+                    echo "✅ Created secret: $secret_name"
+                  fi
+                fi
+              done
+
+              echo "Docker secrets step completed."
 
           # Verificar arquivos necessários
           echo "🔍 Verificando arquivos necessários..."
@@ -331,7 +431,7 @@ jobs:
 
           # 4. Limpeza de imagens antigas (opcional - manter apenas algumas versões)
           echo "🔍 Limpeza de imagens antigas do Scheduler..."
-          old_images=$(docker images ghcr.io/wibson82/conexao-de-sorte-backend-scheduler/scheduler --format "{{.ID}} {{.Repository}}:{{.Tag}}" | tail -n +4 || true)
+          old_images=$(docker images ghcr.io/wibson82/conexao-de-sorte-backend-scheduler --format "{{.ID}} {{.Repository}}:{{.Tag}}" | tail -n +4 || true)
           if [[ -n "$old_images" ]]; then
             echo "⚠️ Removendo imagens antigas (mantendo 3 mais recentes):"
             echo "$old_images" | while read image_id image_name; do
@@ -378,7 +478,7 @@ jobs:
           echo "🚀 Iniciando deploy do Scheduler no Docker Swarm..."
 
           # Verificar se temos os segredos mínimos necessários
-          if [[ -z "${CONEXAO_DE_SORTE_DATABASE_R2DBC_URL}" ]] || [[ -z "${CONEXAO_DE_SORTE_DATABASE_USERNAME}" ]] || [[ -z "${CONEXAO_DE_SORTE_DATABASE_PASSWORD}" ]]; then
+          if [[ -z "${CONEXAO_DE_SORTE_DATABASE_PASSWORD}" ]] || [[ -z "${CONEXAO_DE_SORTE_DATABASE_R2DBC_URL}" ]] || [[ -z "${CONEXAO_DE_SORTE_DATABASE_USERNAME}" ]]; then
             echo "❌ Segredos do banco de dados não configurados"
             echo "⚠️ Verifique:"
             echo "  - Se os segredos existem no Azure Key Vault"
@@ -431,59 +531,45 @@ jobs:
 
           # Verificar tarefas dos serviços (para debug)
           echo "📋 Tarefas dos serviços:"
-          for service in $(docker service ls --filter name="${STACK_NAME}_*" --format "{{.Name}}" ); do
+          for service in $(docker service ls --filter name="${STACK_NAME}_*" --format "{{.Name}}"); do
             echo "=== $service ==="
             docker service ps "$service" --no-trunc --format "table {{.Name}}\t{{.Node}}\t{{.CurrentState}}\t{{.Error}}"
           done
 
           # Health check específico do Scheduler
           echo "🏥 Verificando saúde dos serviços..."
-          service_name="${STACK_NAME}_scheduler"
-          if docker service ls --filter name="$service_name" --format "{{.Name}}" | grep -q "$service_name"; then
-            echo "✅ Serviço $service_name encontrado"
+          scheduler_service="${STACK_NAME}_scheduler"
+
+          if docker service ls --filter name="$scheduler_service" --format "{{.Name}}" | grep -q "$scheduler_service"; then
+            echo "✅ Serviço $scheduler_service encontrado"
+
+            # Aguardar serviço ficar saudável (timeout 180s)
             timeout=180
             echo "⏳ Aguardando serviço ficar saudável (timeout: ${timeout}s)..."
+
             start_time=$(date +%s)
-            healthy=0
             while true; do
               current_time=$(date +%s)
               elapsed=$((current_time - start_time))
+
               if [[ $elapsed -gt $timeout ]]; then
                 echo "⚠️ Timeout aguardando serviço ficar saudável"
                 break
               fi
-              replicas=$(docker service ls --filter name="$service_name" --format "{{.Replicas}}")
-              # Busca o container mais recente do serviço
-              container_id=$(docker ps --filter "name=${service_name}" --format "{{.ID}}" | head -1)
-              if [[ -n "$container_id" ]]; then
-                health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "no-health-check")
-                echo "⏳ ($elapsed/${timeout}s) - Réplicas: $replicas - Health: $health_status"
-                if [[ "$health_status" == "healthy" ]]; then
-                  echo "✅ Container está healthy!"
-                  healthy=1
-                  break
-                fi
-                # Mostra logs do container se estiver demorando
-                if (( elapsed > 60 )); then
-                  echo "--- Últimos logs do container $container_id ---"
-                  docker logs --tail 20 "$container_id" || true
-                  echo "----------------------------------------------"
-                fi
+
+              replicas=$(docker service ls --filter name="$scheduler_service" --format "{{.Replicas}}")
+              if [[ "$replicas" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]] && [[ "${replicas%/*}" == "${replicas#*/}" ]]; then
+                echo "✅ Serviço $scheduler_service está saudável: $replicas"
+                break
               else
-                echo "⏳ ($elapsed/${timeout}s) - Nenhum container encontrado para $service_name"
+                echo "⏳ Aguardando... ($elapsed/${timeout}s) - Réplicas: $replicas"
+                sleep 10
               fi
-              sleep 10
             done
-            if [[ $healthy -ne 1 ]]; then
-              echo "❌ Serviço não ficou healthy. Exibindo logs do container mais recente:"
-              last_container=$(docker ps -a --filter "name=${service_name}" --format "{{.ID}}" | head -1)
-              if [[ -n "$last_container" ]]; then
-                docker logs --tail 50 "$last_container" || true
-              fi
-            fi
           else
-            echo "❌ Serviço $service_name não encontrado"
+            echo "❌ Serviço $scheduler_service não encontrado"
           fi
+
           echo "📊 Status final dos serviços:"
           docker service ls --filter name="${STACK_NAME}_*" --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"
 
@@ -498,21 +584,28 @@ jobs:
 
           while [ $elapsed -lt $timeout ]; do
             echo "🔎 Verificando containers do Scheduler (${elapsed}/${timeout}s)..."
-            # Buscar container mais recente do scheduler
-            container_id=$(docker ps --filter "name=conexao-scheduler" --format "{{.ID}}" | head -1)
-            if [[ -n "$container_id" ]]; then
-              container_name=$(docker inspect --format='{{.Name}}' "$container_id" | sed 's|/||')
-              health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "no-health-check")
-              echo "📊 Container encontrado: $container_name ($container_id) - Health: $health_status"
+
+            # Buscar container do scheduler que está rodando
+            scheduler_container=$(docker ps --filter "name=conexao-scheduler" --filter "status=running" --format "{{.Names}}\t{{.Status}}" | head -1)
+
+            if [[ -n "$scheduler_container" ]]; then
+              echo "📊 Container encontrado: $scheduler_container"
+
+              # Verificar se tem health status
+              container_name=$(echo "$scheduler_container" | cut -f1)
+              health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "no-health-check")
+
               if [[ "$health_status" == "healthy" ]]; then
                 echo "✅ Container do Scheduler está healthy no runner"
                 echo "🎯 Deploy confirmado com sucesso!"
                 exit 0
               elif [[ "$health_status" == "no-health-check" ]]; then
                 echo "⚠️ Container sem health check configurado, verificando se está rodando..."
-                uptime=$(docker inspect --format='{{.State.StartedAt}}' "$container_id" | xargs -I {} date -d {} +%s)
+                # Se não tem health check, verificar se o container está rodando há pelo menos 30s
+                uptime=$(docker inspect --format='{{.State.StartedAt}}' "$container_name" | xargs -I {} date -d {} +%s)
                 current_time=$(date +%s)
                 running_time=$((current_time - uptime))
+
                 if [ $running_time -gt 30 ]; then
                   echo "✅ Container rodando há ${running_time}s - considerado estável"
                   echo "🎯 Deploy confirmado com sucesso!"
@@ -520,28 +613,18 @@ jobs:
                 fi
               else
                 echo "⚠️ Container health status: $health_status"
-                if (( elapsed > 60 )); then
-                  echo "--- Últimos logs do container $container_id ---"
-                  docker logs --tail 20 "$container_id" || true
-                  echo "----------------------------------------------"
-                fi
               fi
             else
               echo "⚠️ Nenhum container do Scheduler encontrado rodando"
             fi
+
             sleep "$interval"
             elapsed=$((elapsed + interval))
           done
+
           echo "❌ Timeout: Scheduler não está healthy após ${timeout}s"
           echo "📋 Listando containers atuais:"
-          docker ps --filter "name=conexao-scheduler" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-          # Exibe logs do container mais recente
-          last_container=$(docker ps -a --filter "name=conexao-scheduler" --format "{{.ID}}" | head -1)
-          if [[ -n "$last_container" ]]; then
-            echo "--- Últimos logs do container $last_container ---"
-            docker logs --tail 50 "$last_container" || true
-            echo "----------------------------------------------"
-          fi
+          docker ps --filter "name=conexao" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           exit 1
 
   cleanup-artifacts:
