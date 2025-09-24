@@ -44,12 +44,25 @@ jobs:
       - name: Security Validation
         run: |
           echo "🔒 Verificando segurança da configuração..."
-          if grep -R --line-number "password\s*:\s*" docker-compose.yml | grep -v "\${" | grep -v "#" | grep -v "external:"; then
-            echo "❌ Found potential hardcoded passwords"
-            exit 1
-          else
-            echo "✅ No hardcoded passwords found"
+          # Verificar se há senhas hardcoded (não em secrets externos)
+          hardcoded_passwords=$(grep -R --line-number "password\s*:\s*" docker-compose.yml | grep -v "\${" | grep -v "#" | grep -v "external:" || true)
+
+          if [[ -n "$hardcoded_passwords" ]]; then
+            # Verificar se as linhas com password são seguidas por external: true
+            while IFS= read -r line; do
+              line_num=$(echo "$line" | cut -d: -f1)
+              next_line_num=$((line_num + 1))
+              next_line=$(sed -n "${next_line_num}p" docker-compose.yml)
+
+              if [[ ! "$next_line" =~ external:[[:space:]]*true ]]; then
+                echo "❌ Found potential hardcoded password at line $line_num: $line"
+                echo "❌ Next line: $next_line"
+                exit 1
+              fi
+            done <<< "$hardcoded_passwords"
           fi
+
+          echo "✅ No hardcoded passwords found - all passwords use external secrets"
 
       - name: 🔎 Validar OIDC Azure
         id: check_secrets
