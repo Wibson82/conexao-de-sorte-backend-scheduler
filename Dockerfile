@@ -94,24 +94,11 @@ COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 COPY --chown=appuser:appgroup scripts/init-database.sh /app/init-database.sh
 RUN chmod +x /app/init-database.sh
 
-# Build-time args → ENV
-ARG CONEXAO_DE_SORTE_DATABASE_URL
-ARG CONEXAO_DE_SORTE_DATABASE_JDBC_URL
-ARG CONEXAO_DE_SORTE_DATABASE_R2DBC_URL
-ARG CONEXAO_DE_SORTE_DATABASE_USERNAME
-ARG CONEXAO_DE_SORTE_DATABASE_PASSWORD
-ARG CONEXAO_DE_SORTE_JWT_ISSUER
-ARG CONEXAO_DE_SORTE_JWT_JWKS_URI
 
-ENV CONEXAO_DE_SORTE_DATABASE_URL=${CONEXAO_DE_SORTE_DATABASE_URL} \
-    CONEXAO_DE_SORTE_DATABASE_JDBC_URL=${CONEXAO_DE_SORTE_DATABASE_JDBC_URL} \
-    CONEXAO_DE_SORTE_DATABASE_R2DBC_URL=${CONEXAO_DE_SORTE_DATABASE_R2DBC_URL} \
-    CONEXAO_DE_SORTE_DATABASE_USERNAME=${CONEXAO_DE_SORTE_DATABASE_USERNAME} \
-    CONEXAO_DE_SORTE_DATABASE_PASSWORD=${CONEXAO_DE_SORTE_DATABASE_PASSWORD} \
-    CONEXAO_DE_SORTE_JWT_ISSUER=${CONEXAO_DE_SORTE_JWT_ISSUER} \
-    CONEXAO_DE_SORTE_JWT_JWKS_URI=${CONEXAO_DE_SORTE_JWT_JWKS_URI}
+# As variáveis sensíveis devem ser passadas apenas em tempo de execução (docker-compose, swarm secrets, etc)
+# Não defina ARG/ENV para segredos sensíveis no Dockerfile!
 
-# Variáveis de ambiente da aplicação devem ser fornecidas externamente (CI/Compose/Helm)
+
 # Definir perfil padrão para container
 ENV SPRING_PROFILES_ACTIVE=container
 
@@ -120,11 +107,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=10 \
   CMD curl -f http://localhost:8084/actuator/health || exit 1
 
 # Labels para metadata
+ARG VERSION=1.0.0
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="Conexão de Sorte - Scheduler"
 LABEL org.opencontainers.image.description="Microserviço de Scheduler ETL para Loterias"
-LABEL org.opencontainers.image.version=${VERSION}
-LABEL org.opencontainers.image.created=${BUILD_DATE}
-LABEL org.opencontainers.image.revision=${VCS_REF}
+LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.created=$BUILD_DATE
+LABEL org.opencontainers.image.revision=$VCS_REF
 LABEL org.opencontainers.image.vendor="Conexão de Sorte"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.url="https://conexaodesorte.com"
@@ -141,10 +131,8 @@ CMD ["java", "-jar", "app.jar"]
 FROM runtime AS debug
 
 # Configurar debug remoto
-ENV JAVA_OPTS="$JAVA_OPTS \
-    -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 \
-    -Dspring.profiles.active=dev \
-    -Dlogging.level.br.tec.facilitaservicos=DEBUG"
+ARG JAVA_OPTS=""
+ENV JAVA_OPTS="$JAVA_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -Dspring.profiles.active=dev -Dlogging.level.br.tec.facilitaservicos=DEBUG"
 
 # Comando para debug com retry
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
