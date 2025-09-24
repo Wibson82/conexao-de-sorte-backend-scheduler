@@ -97,9 +97,35 @@ jobs:
 
       # Upload artifacts removido para evitar storage quota
 
+      - name: 🔐 Setup Docker Registry Authentication
+        run: |
+          echo "🔐 Login no GitHub Container Registry..."
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "✅ Login realizado com sucesso"
+
+      - name: 🏗️ Build Docker Image
+        run: |
+          echo "🏗️ Construindo imagem Docker..."
+          docker build \
+            --tag ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest \
+            --tag ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:${{ github.sha }} \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            --build-arg VCS_REF=${{ github.sha }} \
+            --build-arg VERSION=1.0.0 \
+            .
+          echo "✅ Imagem construída com sucesso"
+
+      - name: 📤 Push Docker Image
+        run: |
+          echo "📤 Fazendo push da imagem para GHCR..."
+          docker push ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest
+          docker push ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:${{ github.sha }}
+          echo "✅ Push realizado com sucesso"
+          echo "🎯 Imagem disponível em: ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest"
+
       - name: Validation completed
         run: |
-          echo "✅ Validação concluída - pronto para deploy"
+          echo "✅ Validação concluída - imagem construída e disponível para deploy"
 
   deploy-selfhosted:
     needs: validate-and-build
@@ -164,12 +190,6 @@ jobs:
               echo "Warning: Secret '$secret_name' not found in Azure Key Vault."
             fi
           done
-
-      - name: 🔐 Docker Registry Login
-        run: |
-          echo "🔐 Fazendo login no GitHub Container Registry..."
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          echo "✅ Login no GHCR realizado com sucesso"
 
       - name: 🔐 Create Docker Secrets
         if: ${{ env.CONEXAO_DE_SORTE_DATABASE_PASSWORD != '' && env.CONEXAO_DE_SORTE_REDIS_PASSWORD != '' }}
@@ -413,17 +433,12 @@ jobs:
           # Configurar variáveis de ambiente para o deploy
           export COMPOSE_PROJECT_NAME="${STACK_NAME}"
 
-          # Pull da imagem mais recente
-          echo "📥 Fazendo pull da imagem mais recente..."
+          # Pull da imagem construída no job anterior
+          echo "📥 Fazendo pull da imagem construída..."
           if ! docker pull ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest; then
-            echo "❌ Falha no pull da imagem - verificando se existe localmente..."
-            if ! docker image inspect ghcr.io/wibson82/conexao-de-sorte-backend-scheduler:latest >/dev/null 2>&1; then
-              echo "❌ Imagem não encontrada localmente! Listando imagens disponíveis:"
-              docker images | grep -E "(conexao-de-sorte-backend-scheduler|REPOSITORY)" || echo "Nenhuma imagem do scheduler encontrada"
-              exit 1
-            else
-              echo "✅ Usando imagem local existente"
-            fi
+            echo "❌ Erro crítico: Imagem não disponível no registry após build"
+            echo "🔍 Verificando status do build anterior..."
+            exit 1
           else
             echo "✅ Pull da imagem realizado com sucesso"
           fi
