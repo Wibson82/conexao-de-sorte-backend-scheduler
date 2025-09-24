@@ -58,7 +58,8 @@ spring:
   # Flyway para migrations
   flyway:
     enabled: true
-    url: ${conexao-de-sorte-database-jdbc-url}/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false&serverTimezone=America/Sao_Paulo
+    # createDatabaseIfNotExist=true permite criar o banco automaticamente
+    url: ${conexao-de-sorte-database-jdbc-url}/conexao_sorte_scheduler?useSSL=true&allowPublicKeyRetrieval=false&serverTimezone=America/Sao_Paulo&createDatabaseIfNotExist=true
     user: ${conexao-de-sorte-database-username}
     password: ${conexao-de-sorte-database-password}
     locations: classpath:db/migration
