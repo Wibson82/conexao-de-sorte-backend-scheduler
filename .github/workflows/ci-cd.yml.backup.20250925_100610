@@ -19,7 +19,7 @@ env:
   SERVICE_NAME: scheduler
   STACK_NAME: conexao-scheduler
   DOCKER_NETWORK_NAME: conexao-network-swarm
-  JAVA_VERSION: '21'
+  JAVA_VERSION: '25'
   MAVEN_OPTS: '-Xmx1024m -XX:MaxMetaspaceSize=256m'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/scheduler
@@ -89,7 +89,7 @@ jobs:
       - name: "🐳 Validate Docker Configuration"
         run: |
           echo "🐳 Validating Dockerfile..."
-          docker build -t temp-validation . && docker rmi temp-validation
+          docker build --dry-run .
           echo "🐳 Validating docker-compose.yml..."
           docker compose -f docker-compose.yml config -q
           echo "✅ Docker configuration is valid"
