@@ -23,17 +23,17 @@ services:
     # Configurações otimizadas
     restart: unless-stopped
     
-    # Health check leve
+    # Health check otimizado para Hostinger KVM 2
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
+      interval: 90s        # Aumentado de 60s
+      timeout: 30s         # Aumentado de 10s
+      retries: 5           # Aumentado de 3
+      start_period: 180s   # Aumentado de 90s
     
     # Variáveis de ambiente JVM otimizadas
     environment:
-      - JAVA_OPTS=-Xms128m -Xmx350m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication
+      - JAVA_OPTS=-Xms64m -Xmx250m -XX:+UseG1GC -XX:MaxGCPauseMillis=300 -XX:+UseStringDeduplication -XX:+UseCompressedOops
       - SERVER_PORT=8081
       - SPRING_PROFILES_ACTIVE=prod
     
