@@ -94,6 +94,10 @@ COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
 COPY --chown=appuser:appgroup scripts/init-database.sh /app/init-database.sh
 RUN chmod +x /app/init-database.sh
 
+# Copiar docker-entrypoint.sh
+COPY --chown=appuser:appgroup docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 
 # As variáveis sensíveis devem ser passadas apenas em tempo de execução (docker-compose, swarm secrets, etc)
 # Não defina ARG/ENV para segredos sensíveis no Dockerfile!
