@@ -1,0 +1,246 @@
+# ============================================================================
+# 🐳 DOCKER-COMPOSE TEMPLATE PADRONIZADO - MICROSSERVIÇOS CONEXÃO DE SORTE
+# ============================================================================
+# Template otimizado para todos os microsserviços backend com:
+# - Configurações de rede padronizadas
+# - Health checks consistentes
+# - Deploy strategies otimizadas
+# - Secrets management via Docker Swarm
+# - Resource limits apropriados
+# - Labels para service discovery
+# - Logging estruturado
+# - Observabilidade integrada
+# ============================================================================
+
+version: '3.8'
+
+services:
+  scheduler:
+    image: ${IMAGE_REGISTRY:-ghcr.io/wibson82}/conexao-de-sorte-backend-scheduler:${IMAGE_TAG:-latest}
+    
+    # ========================================
+    # 🌍 ENVIRONMENT VARIABLES
+    # ========================================
+    environment:
+      # Spring Boot Configuration
+      SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-prod}"
+      SERVER_PORT: "8088"
+      MANAGEMENT_SERVER_PORT: "9088"
+      
+      # Logging Configuration
+      SCHEDULER_LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LOGGING_LEVEL_ROOT: "${ROOT_LOG_LEVEL:-INFO}"
+      LOGGING_LEVEL_BR_TEC_FACILITASERVICOS: "${APP_LOG_LEVEL:-INFO}"
+      LOG_FILE: "/app/logs/application.log"
+      
+      # Database Configuration
+      DATABASE_HOST: "${DATABASE_HOST:-conexao-mysql}"
+      DATABASE_PORT: "${DATABASE_PORT:-3306}"
+      DATABASE_NAME: "${DATABASE_NAME:-conexao_de_sorte}"
+      DATABASE_USERNAME: "${DATABASE_USERNAME:-conexao}"
+      
+      # Redis Configuration
+      REDIS_HOST: "${REDIS_HOST:-conexao-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_DATABASE: "${REDIS_DATABASE:-1}"
+      
+      # JWT Configuration
+      JWT_ISSUER: "${JWT_ISSUER:-https://conexaodesorte.com}"
+      JWT_JWKS_URI: "${JWT_JWKS_URI:-http://conexao-autenticacao:8081/.well-known/jwks.json}"
+      
+      # Observability Configuration
+      MANAGEMENT_TRACING_ENABLED: "${TRACING_ENABLED:-true}"
+      MANAGEMENT_TRACING_PROBABILITY: "${TRACING_PROBABILITY:-0.1}"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: "${ZIPKIN_ENDPOINT:-http://conexao-jaeger:9411/api/v2/spans}"
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "${METRICS_ENABLED:-true}"
+      
+      # JVM Configuration
+      JAVA_OPTS: "${JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+ExitOnOutOfMemoryError}"
+      
+      # Feature Flags
+      FEATURE_SCHEDULER_MS: "${FEATURE_MICROSERVICE:-true}"
+      FEATURE_AUDIT_LOGGING: "${FEATURE_AUDIT:-true}"
+      FEATURE_METRICS_COLLECTION: "${FEATURE_METRICS:-true}"
+      
+      # Secrets via Docker Secrets
+      DATABASE_PASSWORD_FILE: "/run/secrets/DATABASE_PASSWORD"
+      REDIS_PASSWORD_FILE: "/run/secrets/REDIS_PASSWORD"
+      JWT_SECRET_FILE: "/run/secrets/JWT_SECRET"
+      ENCRYPTION_MASTER_KEY_FILE: "/run/secrets/ENCRYPTION_MASTER_KEY"
+      
+    # ========================================
+    # 🔐 SECRETS
+    # ========================================
+    secrets:
+      - DATABASE_PASSWORD
+      - REDIS_PASSWORD
+      - JWT_SECRET
+      - ENCRYPTION_MASTER_KEY
+      
+    # ========================================
+    # 🏥 HEALTH CHECK
+    # ========================================
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9088/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+      
+    # ========================================
+    # 🌐 NETWORKS
+    # ========================================
+    networks:
+      conexao-network-swarm:
+        aliases:
+          - conexao-scheduler
+          
+    # ========================================
+    # 💾 VOLUMES
+    # ========================================
+    volumes:
+      - scheduler-logs:/app/logs
+      - scheduler-config:/app/config
+      
+    # ========================================
+    # 🚀 DEPLOY CONFIGURATION
+    # ========================================
+    deploy:
+      replicas: ${REPLICAS:-1}
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: pause
+        monitor: 60s
+      placement:
+        constraints:
+          - node.role == worker
+        preferences:
+          - spread: node.labels.zone
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-1G}
+          cpus: '${CPU_LIMIT:-1.0}'
+        reservations:
+          memory: ${MEMORY_RESERVATION:-512M}
+          cpus: '${CPU_RESERVATION:-0.5}'
+          
+    # ========================================
+    # 🏷️ LABELS
+    # ========================================
+    labels:
+      # Service Discovery
+      - "traefik.enable=false"
+      - "gateway.enable=true"
+      - "gateway.service.name=conexao-scheduler"
+      - "gateway.service.port=8088"
+      - "gateway.service.path=/rest/scheduler"
+      - "gateway.health.path=/actuator/health"
+      
+      # Network Configuration
+      - "com.docker.network.name=conexao-network-swarm"
+      
+      # OCI Metadata
+      - "org.opencontainers.image.title=Conexão de Sorte - Scheduler"
+      - "org.opencontainers.image.description=Microsserviço de agendamento de tarefas"
+      - "org.opencontainers.image.version=${VERSION:-1.0.0}"
+      - "org.opencontainers.image.vendor=Conexão de Sorte"
+      - "org.opencontainers.image.authors=tech@conexaodesorte.com"
+      - "org.opencontainers.image.licenses=Proprietary"
+      - "org.opencontainers.image.url=https://conexaodesorte.com"
+      - "org.opencontainers.image.documentation=https://docs.conexaodesorte.com"
+      
+      # Microservice Metadata
+      - "microservice.type=${MICROSERVICE_TYPE:-business}"
+      - "microservice.category=${MICROSERVICE_CATEGORY:-general}"
+      - "microservice.version=${VERSION:-1.0.0}"
+      - "microservice.port=8088"
+      - "microservice.health=/actuator/health"
+      
+      # Monitoring Labels
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=9088"
+      - "prometheus.io/path=/actuator/prometheus"
+      
+    # ========================================
+    # 👤 USER CONFIGURATION
+    # ========================================
+    user: "${USER_ID:-1001}:${GROUP_ID:-1001}"
+    
+# ============================================================================
+# 🌐 NETWORKS
+# ============================================================================
+networks:
+  conexao-network-swarm:
+    external: true
+    name: conexao-network-swarm
+
+# ============================================================================
+# 💾 VOLUMES
+# ============================================================================
+volumes:
+  scheduler-logs:
+    driver: local
+  scheduler-config:
+    driver: local
+
+# ============================================================================
+# 🔐 SECRETS
+# ============================================================================
+secrets:
+  DATABASE_PASSWORD:
+    external: true
+    name: DATABASE_PASSWORD
+  REDIS_PASSWORD:
+    external: true
+    name: REDIS_PASSWORD
+  JWT_SECRET:
+    external: true
+    name: JWT_SECRET
+  ENCRYPTION_MASTER_KEY:
+    external: true
+    name: ENCRYPTION_MASTER_KEY
+
+# ============================================================================
+# 📋 CONFIGURATION NOTES
+# ============================================================================
+# 
+# 🔧 DOCKER SWARM CONFIGURATION:
+#   - Configured for 1 replica with automatic restart
+#   - Placement constraint: worker nodes only
+#   - Health checks configured for /actuator/health
+#   - Resources: 512M reserved, 1G limit
+#
+# 🌐 GATEWAY ROUTING:
+#   - Internal route: /rest/scheduler/* -> port 8088
+#   - Health check: /actuator/health
+#   - Service discovery via labels
+#
+# 🔐 SECURITY:
+#   - Secrets managed via Docker Swarm
+#   - Non-root user: 1001:1001
+#   - Network isolation via conexao-network-swarm
+#
+# 📊 MONITORING:
+#   - Prometheus metrics: /actuator/prometheus
+#   - Health checks: /actuator/health
+#   - Distributed tracing via Jaeger
+#   - Structured logging to /app/logs
+#
+# 🚀 DEPLOYMENT:
+#   - Rolling updates with rollback capability
+#   - Resource limits and reservations
+#   - Failure handling and recovery
+#
+# ============================================================================
